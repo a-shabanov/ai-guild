@@ -25,14 +25,7 @@ The unit of progress is a reviewed result with its context attached.
 
 ## How the workflow works
 
-```mermaid
-flowchart LR
-  A["You define the task"] --> B["Agents work and share context"]
-  B --> C["Time, tokens, cost and evidence"]
-  C --> D["You review the result"]
-  D -->|Accept| E["Done"]
-  D -->|Request changes| B
-```
+![Define a task, let agents work, record evidence, review the result and accept it or request changes](docs/assets/workflow.svg)
 
 | What you need to know | Where to find it |
 | --- | --- |
