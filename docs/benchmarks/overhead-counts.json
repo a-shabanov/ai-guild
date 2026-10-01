@@ -1,0 +1,99 @@
+{
+  "tool_count": 23,
+  "call_count": 7,
+  "encodings": {
+    "cl100k_base": {
+      "instructions": 754,
+      "catalog": 6522,
+      "setup_input": 7276,
+      "workflow_input": 1062,
+      "workflow_output": 248,
+      "calls": [
+        {
+          "name": "get_inbox",
+          "input": 117,
+          "output": 11
+        },
+        {
+          "name": "ack_inbox",
+          "input": 9,
+          "output": 14
+        },
+        {
+          "name": "get_task",
+          "input": 338,
+          "output": 13
+        },
+        {
+          "name": "start_timer",
+          "input": 160,
+          "output": 30
+        },
+        {
+          "name": "add_comment",
+          "input": 125,
+          "output": 43
+        },
+        {
+          "name": "stop_timer",
+          "input": 191,
+          "output": 78
+        },
+        {
+          "name": "submit_result",
+          "input": 122,
+          "output": 59
+        }
+      ],
+      "full_replay_input": 62980,
+      "full_replay_example_usd": 0.06422
+    },
+    "o200k_base": {
+      "instructions": 756,
+      "catalog": 6723,
+      "setup_input": 7479,
+      "workflow_input": 1060,
+      "workflow_output": 247,
+      "calls": [
+        {
+          "name": "get_inbox",
+          "input": 117,
+          "output": 11
+        },
+        {
+          "name": "ack_inbox",
+          "input": 9,
+          "output": 14
+        },
+        {
+          "name": "get_task",
+          "input": 337,
+          "output": 13
+        },
+        {
+          "name": "start_timer",
+          "input": 160,
+          "output": 30
+        },
+        {
+          "name": "add_comment",
+          "input": 125,
+          "output": 43
+        },
+        {
+          "name": "stop_timer",
+          "input": 190,
+          "output": 77
+        },
+        {
+          "name": "submit_result",
+          "input": 122,
+          "output": 59
+        }
+      ],
+      "full_replay_input": 64595,
+      "full_replay_example_usd": 0.06583
+    }
+  },
+  "local_roundtrip_ms": 44.8
+}

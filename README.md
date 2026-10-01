@@ -74,7 +74,22 @@ For a server outside localhost, configure HTTPS, database credentials, `PUBLIC_U
 
 ## Bring your own agents
 
-AI Guild exposes an HTTP MCP endpoint at `/mcp` and a REST API at `/api`. Claude Code, Codex and other clients can use the same task model. The server receives task records and evidence; coding agents run in your own working environment.
+AI Guild exposes an HTTP MCP endpoint at `/mcp` and a REST API at `/api`. The server receives task records and evidence; coding agents run in your own working environment.
+
+### Agent readiness
+
+These are **client integrations**, not restrictions on which underlying model you can use. “Ready” means setup and companion tooling are included for the self-hosted preview.
+
+| Agent / client | Ready today? | What is included or still missing |
+| --- | --- | --- |
+| **Claude Code** | **Ready for preview** | HTTP MCP setup, shared workflow instructions, local file companion, session token accounting and CLI watcher preset |
+| **Codex CLI / desktop app** | **Ready for preview** | HTTP MCP setup, shared workflow instructions, local file companion and session token accounting; automatic wake-up uses the local Codex CLI |
+| Cursor / Windsurf | Not validated yet | No maintained client-specific setup or end-to-end check; no dedicated usage parser or watcher preset |
+| Cline / Roo Code | Not validated yet | No maintained client-specific setup or end-to-end check; no dedicated usage parser or watcher preset |
+| Gemini CLI | Not validated yet | No maintained setup, session usage parser or watcher preset |
+| Custom agents and frameworks | API ready; integration required | Use REST or HTTP MCP with your own adapter and actual token/cost reporting |
+
+Other clients are not certified by this preview. The [agent guide](docs/agents.md) explains the integration boundaries, authentication and optional helpers.
 
 ```sh
 # Claude Code — replace the address and placeholder with your instance and agent key.
@@ -91,6 +106,21 @@ bearer_token_env_var = "AI_TRACKER_KEY"
 ```
 
 The [agent guide](docs/agents.md) includes the workflow rules, tool catalogue and setup notes. Local file uploads are available through `server/scripts/files-mcp.ts`; the optional local watcher can resume agents after trusted human comments.
+
+### What does tracking add?
+
+**The tracker itself makes no LLM calls.** Agents spend extra tokens on structured updates and reading tracker context. A short reference task produced the following payload sizes:
+
+| Extra work | Input tokens | Output tokens | Illustrative API cost* |
+| --- | ---: | ---: | ---: |
+| Server-side background LLM work | 0 | 0 | $0 |
+| Short task: inbox → read task → timer → one update → submit, **7 calls**; each new payload counted once | ~1,060 | ~250 | **~$0.0023** |
+| Full MCP catalogue + shared instructions, per uncached context read | ~7,300–7,500 | 0 | ~$0.0073–0.0075 |
+| Same task with the full catalogue and accumulated messages re-read on **8 model turns**, without caching | ~63,000–65,000 | ~250 | ~$0.064–0.066 |
+
+\* Arithmetic examples at **$1 / million input tokens and $5 / million output tokens**, not a quoted provider tariff or a measured bill. The first task row counts new messages once; the last row models repeated context reads. Actual cost depends on the model, client tool discovery, prompt caching, task history and extra reasoning. Subscription usage is not a separate per-call API charge. Hosting and the agent's implementation work are excluded.
+
+The reference used real MCP responses from an isolated synthetic database, with two tokenizer proxies. It is a payload benchmark, not an agent A/B study or a promised percentage overhead. See [the measurements and reproduction steps](docs/overhead.md). Keep updates concise and attach useful evidence rather than pasting entire logs into comments.
 
 ## Web, iPhone, your server
 

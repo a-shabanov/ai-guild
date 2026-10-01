@@ -1,0 +1,1320 @@
+{
+  "methodology": "Synthetic short task; real MCP responses; no LLM generation or provider billing measured.",
+  "server": {
+    "name": "ai-tracker",
+    "version": "0.1.0"
+  },
+  "instructions": "AI Tracker: shared task and time tracker for AI agents and their human.\n\nWorkflow:\n1. At the start of a session call get_inbox. It returns what others (including the human) did on\n   your tasks since you last looked: new comments, reassignments, status changes. Act on it, then\n   call ack_inbox with the highest event id you handled.\n2. Before working, find or create the task (list_tasks / create_task) and call start_timer.\n   Work is recorded per stretch: each model, and each sub-agent you delegate to, keeps its own\n   entry with its own model, effort and \"worker\" name, also when they run in parallel.\n3. While working, use add_comment for progress, questions and discussion with other agents\n   (mention them as @name). Prefer useful visual or analytical artifacts: screenshots,\n   recordings, charts, diagrams and reports. Attach files, supplied materials, references and\n   logs only when needed to understand or verify the task, or when explicitly requested.\n   Do not attach repository source files by default; link to the file, commit or PR instead.\n   Use attach_files of the local MCP server \"ai-tracker-files\", or get_upload_command when it\n   is unavailable. Use attach_text for necessary text reports and logs.\n4. When finished call stop_timer with your token usage and cost, then submit_result. Report all\n   four token counts (input, output, cache read, cache write): with prompt caching most of what\n   you read is cache. If you learn the numbers later, fix the entry with update_time_log.\n\nStructure. Work is a tree: epic > story > task > subtask. An epic is a large goal; a story is a\nresult the person can see or use; a task is a piece of work towards it; a subtask is a step of\na task. Set \"level\" and \"parent_id\" when creating. Do not build a tree for small work: one task\nis enough for something done in one sitting. Set \"kind\": visual for what the person sees (UI,\ndesign, graphics, animation), technical for code, data and infrastructure; a task that is both\nis split in two. Track time on the lowest level you work at; parents add it up themselves.\nLinks (link_tasks) say how tasks depend on each other: blocks / blocked_by, relates, duplicates.\nBefore starting a task, look at its links in get_task: do not start what is blocked by an\nunfinished task without saying so.\n\nImages: attach the file, then write ![what it shows](filename.png) in a description, comment or\nresult to show it inline.\n   Results go to \"review\" by default so the human can check them. If the human comments on the\n   result, you will see it in get_inbox - fix what they asked and submit again.\n\nWhat the person asks for in chat belongs in the tracker too, under their name. When they set a\ntask, change its scope or give a requirement, record it with on_behalf_of=<their account>:\ncreate_task for a new piece of work, add_comment on the task it refines. Reword it into a clear,\ncorrect statement of what is wanted (do not paste the raw message as the text) and put their own\nwords in original_text. Attach supplied files and pictures only when needed or explicitly\nrequested. Do not record questions,\nsmall talk or replies like \"ok\".\n\nEvery write requires \"model\" (your exact model id) and \"effort\" (your reasoning effort level).\nReport them truthfully; they drive the analytics.",
+  "tools": [
+    {
+      "name": "whoami",
+      "description": "The account this API key belongs to.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "list_accounts",
+      "description": "All accounts (agents and humans) that tasks can be assigned to or mentioned.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "list_projects",
+      "description": "Projects with their task counts and logged time.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "create_project",
+      "description": "Create a project. Tasks can also name a new project directly; it is created on the fly.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "default": "",
+            "description": "Markdown",
+            "type": "string",
+            "maxLength": 5000
+          },
+          "color": {
+            "description": "Accent colour of the project page",
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "update_project",
+      "description": "Rename a project or change its description (Markdown) and accent colour.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^#[0-9a-fA-F]{6}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "list_tasks",
+      "description": "List tasks. Defaults to open tasks. Use assignee=\"me\" for your own.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "default": "open",
+            "description": "Comma-separated statuses, or \"open\" for everything not done/cancelled",
+            "type": "string"
+          },
+          "assignee": {
+            "description": "Account name or id, \"me\", or \"none\"",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "level": {
+            "description": "Comma-separated levels: epic, story, task, subtask",
+            "type": "string"
+          },
+          "kind": {
+            "description": "visual or technical, or \"none\"",
+            "type": "string"
+          },
+          "parent": {
+            "description": "Id of the parent task, or \"none\" for top-level tasks",
+            "type": "string"
+          },
+          "q": {
+            "description": "Substring search over title and description",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "offset": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_task",
+      "description": "Full task: description, result, comments, time logs, attachments and history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Task id"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "create_task",
+      "description": "Create a task. Assign it to yourself with assignee=\"me\". To write down a task the person gave you in chat, pass on_behalf_of with their account name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Exact model id doing the work, e.g. \"claude-fable-5-1\" or \"gpt-5-codex\""
+          },
+          "effort": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "description": "Reasoning effort the model runs at, e.g. \"low\", \"medium\", \"high\", \"xhigh\", \"max\""
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "description": {
+            "default": "",
+            "description": "Markdown",
+            "type": "string",
+            "maxLength": 100000
+          },
+          "status": {
+            "default": "todo",
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "review",
+              "blocked",
+              "done",
+              "cancelled"
+            ]
+          },
+          "priority": {
+            "default": "normal",
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high",
+              "urgent"
+            ]
+          },
+          "project": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "labels": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            }
+          },
+          "level": {
+            "default": "task",
+            "type": "string",
+            "enum": [
+              "epic",
+              "story",
+              "task",
+              "subtask"
+            ],
+            "description": "epic: a large goal; story: a result the person can see or use; task: a piece of work; subtask: a step of a task"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "visual",
+              "technical"
+            ],
+            "description": "visual: what the person sees (UI, design, graphics, animation); technical: code, data, infrastructure"
+          },
+          "parent_id": {
+            "description": "The task this one is part of; must be of a higher level",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            ],
+            "description": "Account name or numeric id"
+          },
+          "on_behalf_of": {
+            "description": "The person who asked for this in chat. They become the author; you are shown as the one who recorded it",
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            ]
+          },
+          "original_text": {
+            "description": "The person's own words, when you reworded them",
+            "type": "string",
+            "maxLength": 100000
+          },
+          "happened_at": {
+            "description": "When it was actually said or done, if not now (recording history)",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "model",
+          "effort",
+          "title"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "update_task",
+      "description": "Change task fields: status, assignee, title, description, priority, project, labels.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Task id"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Exact model id doing the work, e.g. \"claude-fable-5-1\" or \"gpt-5-codex\""
+          },
+          "effort": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "description": "Reasoning effort the model runs at, e.g. \"low\", \"medium\", \"high\", \"xhigh\", \"max\""
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 100000
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "review",
+              "blocked",
+              "done",
+              "cancelled"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high",
+              "urgent"
+            ]
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "labels": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50
+            }
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "epic",
+              "story",
+              "task",
+              "subtask"
+            ],
+            "description": "epic: a large goal; story: a result the person can see or use; task: a piece of work; subtask: a step of a task"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "visual",
+                  "technical"
+                ],
+                "description": "visual: what the person sees (UI, design, graphics, animation); technical: code, data, infrastructure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parent_id": {
+            "description": "null moves the task to the top",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                ],
+                "description": "Account name or numeric id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "task_id",
+          "model",
+          "effort"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "link_tasks",
+      "description": "Link two tasks: one blocks the other, they relate, or one duplicates the other. Parent and child are not links: set parent_id instead.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Task id"
+          },
+          "to": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Id of the other task"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "blocks",
+              "blocked_by",
+              "relates",
+              "duplicates",
+              "duplicated_by"
+            ],
+            "description": "How this task relates to the other: it blocks it, is blocked_by it, relates to it, duplicates it, is duplicated_by it"
+          }
+        },
+        "required": [
+          "task_id",
+          "to",
+          "type"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "unlink_tasks",
+      "description": "Remove a link between tasks; link ids are in get_task.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Task id"
+          },
+          "link_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "task_id",
+          "link_id"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "add_comment",
+      "description": "Comment on a task: progress notes, questions, replies to the human or to other agents. With on_behalf_of, writes down what the person said in chat about this task.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Task id"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Exact model id doing the work, e.g. \"claude-fable-5-1\" or \"gpt-5-codex\""
+          },
+          "effort": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "description": "Reasoning effort the model runs at, e.g. \"low\", \"medium\", \"high\", \"xhigh\", \"max\""
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100000,
+            "description": "Markdown. Mention accounts as @name"
+          },
+          "on_behalf_of": {
+            "description": "The person who asked for this in chat. They become the author; you are shown as the one who recorded it",
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            ]
+          },
+          "original_text": {
+            "description": "The person's own words, when you reworded them",
+            "type": "string",
+            "maxLength": 100000
+          },
+          "happened_at": {
+            "description": "When it was actually said or done, if not now (recording history)",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "task_id",
+          "model",
+          "effort",
+          "body"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "submit_result",
+      "description": "Record the outcome of the task and move it to \"review\" (default) or another status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Task id"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Exact model id doing the work, e.g. \"claude-fable-5-1\" or \"gpt-5-codex\""
+          },
+          "effort": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "description": "Reasoning effort the model runs at, e.g. \"low\", \"medium\", \"high\", \"xhigh\", \"max\""
+          },
+          "result": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200000,
+            "description": "Markdown summary of what was done"
+          },
+          "status": {
+            "default": "review",
+            "description": "Status to move the task to",
+            "type": "string",
+            "enum": [
+              "todo",
+              "in_progress",
+              "review",
+              "blocked",
+              "done",
+              "cancelled"
+            ]
+          },
+          "happened_at": {
+            "description": "When the work was actually finished, if not now (recording history)",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "task_id",
+          "model",
+          "effort",
+          "result"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "log_time",
+      "description": "Log a finished stretch of work on a task with its token usage and cost. One entry per model and worker: do not merge what different models did into one entry.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Task id"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Exact model id doing the work, e.g. \"claude-fable-5-1\" or \"gpt-5-codex\""
+          },
+          "effort": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "description": "Reasoning effort the model runs at, e.g. \"low\", \"medium\", \"high\", \"xhigh\", \"max\""
+          },
+          "seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 604800,
+            "description": "Duration of the work"
+          },
+          "started_at": {
+            "description": "Defaults to now - seconds",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "input_tokens": {
+            "description": "Uncached input tokens",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "output_tokens": {
+            "description": "Output tokens, thinking included",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cache_read_tokens": {
+            "description": "Input tokens read from the prompt cache",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cache_write_tokens": {
+            "description": "Input tokens written to the prompt cache",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cost_usd": {
+            "description": "Cost at list API prices",
+            "type": "number",
+            "minimum": 0
+          },
+          "worker": {
+            "description": "Who exactly did this stretch when several work in parallel, e.g. \"main session\", \"sub-agent: tests\"",
+            "type": "string",
+            "maxLength": 100
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "task_id",
+          "model",
+          "effort",
+          "seconds"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "update_time_log",
+      "description": "Correct one of your time logs once the real numbers are known: duration, tokens, cost.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "time_log_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 604800,
+            "description": "Duration of the work"
+          },
+          "started_at": {
+            "description": "Defaults to now - seconds",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "input_tokens": {
+            "description": "Uncached input tokens",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "output_tokens": {
+            "description": "Output tokens, thinking included",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cache_read_tokens": {
+            "description": "Input tokens read from the prompt cache",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cache_write_tokens": {
+            "description": "Input tokens written to the prompt cache",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cost_usd": {
+            "description": "Cost at list API prices",
+            "type": "number",
+            "minimum": 0
+          },
+          "worker": {
+            "description": "Who exactly did this stretch when several work in parallel, e.g. \"main session\", \"sub-agent: tests\"",
+            "type": "string",
+            "maxLength": 100
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "time_log_id"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "start_timer",
+      "description": "Start timing a stretch of work on a task; returns the entry id. Moves a \"todo\" task to \"in_progress\". Every model and every sub-agent working on the task starts its own timer, also in parallel; name yours in \"worker\".",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Task id"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Exact model id doing the work, e.g. \"claude-fable-5-1\" or \"gpt-5-codex\""
+          },
+          "effort": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "description": "Reasoning effort the model runs at, e.g. \"low\", \"medium\", \"high\", \"xhigh\", \"max\""
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "worker": {
+            "description": "Who exactly did this stretch when several work in parallel, e.g. \"main session\", \"sub-agent: tests\"",
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "task_id",
+          "model",
+          "effort"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "stop_timer",
+      "description": "Stop a running timer of yours and record its time, tokens and cost. With several running on the task, pass the time_log_id that start_timer returned.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Task id"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Exact model id doing the work, e.g. \"claude-fable-5-1\" or \"gpt-5-codex\""
+          },
+          "effort": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30,
+            "description": "Reasoning effort the model runs at, e.g. \"low\", \"medium\", \"high\", \"xhigh\", \"max\""
+          },
+          "time_log_id": {
+            "description": "The entry start_timer returned. Needed when you have several timers running on the task",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "input_tokens": {
+            "description": "Uncached input tokens",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "output_tokens": {
+            "description": "Output tokens, thinking included",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cache_read_tokens": {
+            "description": "Input tokens read from the prompt cache",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cache_write_tokens": {
+            "description": "Input tokens written to the prompt cache",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "cost_usd": {
+            "description": "Cost at list API prices",
+            "type": "number",
+            "minimum": 0
+          },
+          "worker": {
+            "description": "Who exactly did this stretch when several work in parallel, e.g. \"main session\", \"sub-agent: tests\"",
+            "type": "string",
+            "maxLength": 100
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "attach_text",
+      "description": "Attach text content (log, diff, JSON, report) to a task as a file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Task id"
+          },
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "e.g. \"build.log\""
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000000
+          },
+          "comment_id": {
+            "description": "Attach to this comment",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "task_id",
+          "filename",
+          "content"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_upload_command",
+      "description": "How to upload a local file (screenshot, video, archive, large log) to a task. Returns a curl command to run in your shell; binary files cannot go through MCP.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Task id"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Local path of the file to upload"
+          }
+        },
+        "required": [
+          "task_id",
+          "path"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "read_attachment",
+      "description": "Read an attachment: text files as text (use tail=true for the end of a long log), images as images.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "attachment_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "tail": {
+            "default": false,
+            "description": "Read the end of the file instead of the start",
+            "type": "boolean"
+          },
+          "max_bytes": {
+            "default": 100000,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 400000
+          }
+        },
+        "required": [
+          "attachment_id"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_inbox",
+      "description": "What others did on tasks you are involved in (or where you are @mentioned) since your last ack_inbox: comments from the human and other agents, assignments, status changes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "ack_inbox",
+      "description": "Mark inbox events up to the given event id as handled.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "up_to": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Highest event id that has been handled"
+          }
+        },
+        "required": [
+          "up_to"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_analytics",
+      "description": "Aggregated time, tokens and cost, grouped by one or two dimensions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "group_by": {
+            "default": "model",
+            "description": "One or two of: worker, model, effort, account, system, project, day, task (comma-separated)",
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          }
+        },
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    }
+  ],
+  "calls": [
+    {
+      "name": "get_inbox",
+      "arguments": {},
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"events\": [\n    {\n      \"event_id\": 1,\n      \"task_id\": 1,\n      \"task_title\": \"Fix the empty-state label\",\n      \"type\": \"task_created\",\n      \"by\": \"demo (human)\",\n      \"at\": \"2026-10-01T16:00:58.693Z\",\n      \"title\": \"Fix the empty-state label\",\n      \"assignee\": \"benchmark\"\n    }\n  ],\n  \"next\": \"After handling these, call ack_inbox with up_to=1\"\n}"
+          }
+        ]
+      },
+      "milliseconds": 6.295416999999986
+    },
+    {
+      "name": "ack_inbox",
+      "arguments": {
+        "up_to": 1
+      },
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"cursor\": 1\n}"
+          }
+        ]
+      },
+      "milliseconds": 3.903542000000016
+    },
+    {
+      "name": "get_task",
+      "arguments": {
+        "task_id": 1
+      },
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"id\": 1,\n  \"title\": \"Fix the empty-state label\",\n  \"description\": \"Use a clear English label and verify it in the browser.\",\n  \"status\": \"todo\",\n  \"priority\": \"normal\",\n  \"project\": \"Example\",\n  \"labels\": [],\n  \"parent_id\": null,\n  \"created_by\": 1,\n  \"assignee_id\": 2,\n  \"model\": null,\n  \"effort\": null,\n  \"result\": null,\n  \"result_by\": null,\n  \"result_model\": null,\n  \"result_effort\": null,\n  \"result_at\": null,\n  \"created_at\": \"2026-10-01T16:00:58.692Z\",\n  \"updated_at\": \"2026-10-01T16:00:58.692Z\",\n  \"started_at\": null,\n  \"completed_at\": null,\n  \"recorded_by\": null,\n  \"original_text\": null,\n  \"level\": \"task\",\n  \"kind\": \"technical\",\n  \"created_by_name\": \"demo\",\n  \"assignee_name\": \"benchmark\",\n  \"result_by_name\": null,\n  \"recorded_by_name\": null,\n  \"total_seconds\": 0,\n  \"child_count\": 0,\n  \"child_done\": 0,\n  \"comment_count\": 0,\n  \"attachment_count\": 0,\n  \"ancestors\": [],\n  \"children\": [],\n  \"links\": [],\n  \"tree_seconds\": 0,\n  \"comments\": [],\n  \"time_logs\": [],\n  \"attachments\": []\n}"
+          }
+        ]
+      },
+      "milliseconds": 5.143958999999995
+    },
+    {
+      "name": "start_timer",
+      "arguments": {
+        "task_id": 1,
+        "model": "synthetic-benchmark",
+        "effort": "none",
+        "worker": "reference fixture"
+      },
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"id\": 1,\n  \"task_id\": 1,\n  \"account_id\": 2,\n  \"model\": \"synthetic-benchmark\",\n  \"effort\": \"none\",\n  \"seconds\": null,\n  \"started_at\": \"2026-10-01T16:00:58.776Z\",\n  \"ended_at\": null,\n  \"note\": null,\n  \"input_tokens\": null,\n  \"output_tokens\": null,\n  \"cost_usd\": null,\n  \"created_at\": \"2026-10-01T16:00:58.776Z\",\n  \"cache_read_tokens\": null,\n  \"cache_write_tokens\": null,\n  \"worker\": \"reference fixture\",\n  \"account_name\": \"benchmark\"\n}"
+          }
+        ]
+      },
+      "milliseconds": 12.141125000000045
+    },
+    {
+      "name": "add_comment",
+      "arguments": {
+        "task_id": 1,
+        "model": "synthetic-benchmark",
+        "effort": "none",
+        "body": "The label is updated. I am checking the empty state in the browser."
+      },
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"id\": 1,\n  \"task_id\": 1,\n  \"author_id\": 2,\n  \"body\": \"The label is updated. I am checking the empty state in the browser.\",\n  \"model\": \"synthetic-benchmark\",\n  \"effort\": \"none\",\n  \"created_at\": \"2026-10-01T16:00:58.788Z\",\n  \"recorded_by\": null,\n  \"original_text\": null,\n  \"author_name\": \"benchmark\",\n  \"author_kind\": \"agent\",\n  \"recorded_by_name\": null\n}"
+          }
+        ]
+      },
+      "milliseconds": 5.357833000000028
+    },
+    {
+      "name": "stop_timer",
+      "arguments": {
+        "task_id": 1,
+        "time_log_id": 1,
+        "model": "synthetic-benchmark",
+        "effort": "none",
+        "worker": "reference fixture",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "cost_usd": 0,
+        "note": "Synthetic protocol workload; no LLM work performed."
+      },
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"id\": 1,\n  \"task_id\": 1,\n  \"account_id\": 2,\n  \"model\": \"synthetic-benchmark\",\n  \"effort\": \"none\",\n  \"seconds\": 1,\n  \"started_at\": \"2026-10-01T16:00:58.776Z\",\n  \"ended_at\": \"2026-10-01T16:00:58.794Z\",\n  \"note\": \"Synthetic protocol workload; no LLM work performed.\",\n  \"input_tokens\": 0,\n  \"output_tokens\": 0,\n  \"cost_usd\": 0,\n  \"created_at\": \"2026-10-01T16:00:58.776Z\",\n  \"cache_read_tokens\": 0,\n  \"cache_write_tokens\": 0,\n  \"worker\": \"reference fixture\",\n  \"account_name\": \"benchmark\"\n}"
+          }
+        ]
+      },
+      "milliseconds": 4.448291999999981
+    },
+    {
+      "name": "submit_result",
+      "arguments": {
+        "task_id": 1,
+        "model": "synthetic-benchmark",
+        "effort": "none",
+        "result": "Updated the empty-state label. Checked the English view in the browser. No backend behavior changed. This is a synthetic reference result, not real implementation work."
+      },
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\n  \"id\": 1,\n  \"title\": \"Fix the empty-state label\",\n  \"status\": \"review\",\n  \"priority\": \"normal\",\n  \"project\": \"Example\",\n  \"assignee\": \"benchmark\",\n  \"created_by\": \"demo\",\n  \"total_seconds\": 1,\n  \"level\": \"task\",\n  \"kind\": \"technical\",\n  \"parent_id\": null,\n  \"comments\": 1,\n  \"attachments\": 0,\n  \"updated_at\": \"2026-10-01T16:00:58.798Z\"\n}"
+          }
+        ]
+      },
+      "milliseconds": 7.4732910000000174
+    }
+  ]
+}
