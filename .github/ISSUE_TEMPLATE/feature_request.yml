@@ -1,0 +1,18 @@
+name: Feature request
+description: Explain a workflow that would improve the product.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What should a user or agent be able to do?
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: What happens today?
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: How could we verify the improvement?

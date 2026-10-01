@@ -1,0 +1,27 @@
+name: Bug report
+description: Report a reproducible problem using non-sensitive data.
+labels: [bug]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include expected behaviour and reproduction steps. Do not include keys or private data.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Server runtime, database, browser or iOS version, and deployment mode.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Sanitised screenshots or logs. Security reports must use the private reporting channel.
