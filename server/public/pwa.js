@@ -1,3 +1,4 @@
+import * as i18n from './i18n.js';
 // Platform features of the installed app: passkeys, service worker, push, install, offline outbox.
 
 // ---------- passkeys (WebAuthn) ----------
@@ -60,19 +61,19 @@ function credentialJSON(credential) {
 
 /** Why passkeys cannot be used here, or null when they can. */
 export function passkeyBlocker(config) {
-  if (!window.PublicKeyCredential || !navigator.credentials) return 'Браузер не поддерживает passkeys';
-  if (!isSecureContext) return 'Passkeys работают только по HTTPS или на localhost';
+  if (!window.PublicKeyCredential || !navigator.credentials) return i18n.t('Браузер не поддерживает passkeys');
+  if (!isSecureContext) return i18n.t('Passkeys работают только по HTTPS или на localhost');
   const origins = config?.passkeys?.origins ?? [];
   if (!origins.includes(location.origin)) {
-    return `Passkeys настроены для ${origins.join(', ') || 'другого адреса'}, а вы открыли ${location.origin}`;
+    return i18n.t`Passkeys настроены для ${origins.join(', ') || i18n.t('другого адреса')}, а вы открыли ${location.origin}`;
   }
   return null;
 }
 
 function friendly(err) {
-  if (err?.name === 'NotAllowedError') return new Error('Проверка отменена');
-  if (err?.name === 'InvalidStateError') return new Error('Этот passkey уже добавлен');
-  if (err?.name === 'SecurityError') return new Error('Passkeys недоступны на этом адресе');
+  if (err?.name === 'NotAllowedError') return new Error(i18n.t('Проверка отменена'));
+  if (err?.name === 'InvalidStateError') return new Error(i18n.t('Этот passkey уже добавлен'));
+  if (err?.name === 'SecurityError') return new Error(i18n.t('Passkeys недоступны на этом адресе'));
   return err;
 }
 
@@ -109,7 +110,7 @@ export function deviceName() {
   if (/Macintosh/.test(ua)) return 'Mac';
   if (/Android/.test(ua)) return 'Android';
   if (/Windows/.test(ua)) return 'Windows';
-  return 'Это устройство';
+  return i18n.t('Это устройство');
 }
 
 /** What the device calls its biometric check, for button labels. */
@@ -157,12 +158,12 @@ export const isIOS = () => ['iPhone', 'iPad'].includes(deviceName());
 /** Why push cannot be turned on here, or null when it can. */
 export function pushBlocker() {
   if (isIOS() && !isStandalone()) {
-    return 'На iPhone уведомления работают только в установленном приложении';
+    return i18n.t('На iPhone уведомления работают только в установленном приложении');
   }
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-    return 'Браузер не поддерживает push-уведомления';
+    return i18n.t('Браузер не поддерживает push-уведомления');
   }
-  if (Notification.permission === 'denied') return 'Уведомления запрещены в настройках браузера';
+  if (Notification.permission === 'denied') return i18n.t('Уведомления запрещены в настройках браузера');
   return null;
 }
 
@@ -178,7 +179,7 @@ export async function pushEnabled() {
 
 export async function enablePush(api) {
   if ((await Notification.requestPermission()) !== 'granted') {
-    throw new Error('Вы не разрешили уведомления');
+    throw new Error(i18n.t('Вы не разрешили уведомления'));
   }
   const registration = await navigator.serviceWorker.ready;
   const { key } = await api('GET', '/push/key');

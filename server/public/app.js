@@ -1,41 +1,46 @@
+import * as i18n from './i18n.js';
 // AI Guild web UI. No build step, no dependencies. All DOM is built with h(), never innerHTML,
 // so text coming from agents cannot inject markup.
 
 import * as pwa from './pwa.js';
 
 const STATUS = {
-  todo: 'К выполнению',
-  in_progress: 'В работе',
-  review: 'На проверке',
-  blocked: 'Заблокирована',
-  done: 'Готово',
-  cancelled: 'Отменена',
+  todo: i18n.t('К выполнению'),
+  in_progress: i18n.t('В работе'),
+  review: i18n.t('На проверке'),
+  blocked: i18n.t('Заблокирована'),
+  done: i18n.t('Готово'),
+  cancelled: i18n.t('Отменена'),
 };
-const PRIORITY = { low: 'Низкий', normal: 'Обычный', high: 'Высокий', urgent: 'Срочный' };
-const LEVEL = { epic: 'Эпик', story: 'Стори', task: 'Таск', subtask: 'Подтаск' };
+const PRIORITY = { low: i18n.t('Низкий'), normal: i18n.t('Обычный'), high: i18n.t('Высокий'), urgent: i18n.t('Срочный') };
+const LEVEL = { epic: i18n.t('Эпик'), story: i18n.t('Стори'), task: i18n.t('Таск'), subtask: i18n.t('Подтаск') };
 const LEVELS = Object.keys(LEVEL);
-const KIND = { visual: 'Визуал', technical: 'Техническая' };
+const KIND = { visual: i18n.t('Визуал'), technical: i18n.t('Техническая') };
 const LINK = {
-  blocks: 'Блокирует',
-  blocked_by: 'Заблокирована задачей',
-  relates: 'Связана с',
-  duplicates: 'Дублирует',
-  duplicated_by: 'Дублируется задачей',
+  blocks: i18n.t('Блокирует'),
+  blocked_by: i18n.t('Заблокирована задачей'),
+  relates: i18n.t('Связана с'),
+  duplicates: i18n.t('Дублирует'),
+  duplicated_by: i18n.t('Дублируется задачей'),
 };
 const GROUPS = {
-  worker: 'Исполнитель записи',
-  model: 'Модель',
+  worker: i18n.t('Исполнитель записи'),
+  model: i18n.t('Модель'),
   effort: 'Effort',
-  account: 'Аккаунт',
-  system: 'Система',
-  project: 'Проект',
-  task: 'Задача',
+  account: i18n.t('Аккаунт'),
+  system: i18n.t('Система'),
+  project: i18n.t('Проект'),
+  task: i18n.t('Задача'),
 };
 
 const state = { me: null, accounts: [], inboxCount: 0, poll: null, config: null };
 const app = document.getElementById('app');
 
 // ---------- helpers ----------
+
+function appendChildren(el, ...children) {
+  el.append(...children.flat(Infinity).filter((c) => c != null && c !== false));
+}
 
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -47,7 +52,7 @@ function h(tag, attrs, ...children) {
     else if (k === 'style') el.style.cssText = v;
     else el.setAttribute(k, v === true ? '' : v);
   }
-  el.append(...children.flat(Infinity).filter((c) => c != null && c !== false));
+  appendChildren(el, ...children);
   return el;
 }
 
@@ -62,7 +67,7 @@ async function api(method, path, body) {
     });
   } catch {
     setOffline(true);
-    throw Object.assign(new Error('Нет соединения с сервером'), { offline: true });
+    throw Object.assign(new Error(i18n.t('Нет соединения с сервером')), { offline: true });
   }
   // The service worker marks answers it served from its cache while the network was down.
   setOffline(res.headers.has('X-From-Cache'));
@@ -77,41 +82,41 @@ async function api(method, path, body) {
 
 function fmtDuration(seconds) {
   const s = Math.round(seconds ?? 0);
-  if (s < 60) return `${s} с`;
+  if (s < 60) return i18n.t`${s} с`;
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m} мин`;
+  if (m < 60) return i18n.t`${m} мин`;
   const hrs = Math.floor(m / 60);
-  return m % 60 ? `${hrs} ч ${m % 60} мин` : `${hrs} ч`;
+  return m % 60 ? i18n.t`${hrs} ч ${m % 60} мин` : i18n.t`${hrs} ч`;
 }
 
 function fmtCompact(n) {
   if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
   if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
   if (n >= 1e4) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
-  return Math.round(n).toLocaleString('ru-RU');
+  return Math.round(n).toLocaleString(i18n.dateLocale);
 }
 
 const fmtMoney = (n) =>
   '$' + Number(n ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function fmtSize(bytes) {
-  if (bytes < 1024) return `${bytes} Б`;
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} КБ`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} МБ`;
-  return `${(bytes / 1024 ** 3).toFixed(2)} ГБ`;
+  if (bytes < 1024) return i18n.t`${bytes} Б`;
+  if (bytes < 1024 ** 2) return i18n.t`${(bytes / 1024).toFixed(0)} КБ`;
+  if (bytes < 1024 ** 3) return i18n.t`${(bytes / 1024 ** 2).toFixed(1)} МБ`;
+  return i18n.t`${(bytes / 1024 ** 3).toFixed(2)} ГБ`;
 }
 
-const rtf = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' });
+const rtf = new Intl.RelativeTimeFormat(i18n.locale, { numeric: 'auto' });
 function fmtAgo(iso) {
   const diff = (new Date(iso) - Date.now()) / 1000;
   const abs = Math.abs(diff);
-  if (abs < 60) return 'только что';
+  if (abs < 60) return i18n.t('только что');
   if (abs < 3600) return rtf.format(Math.round(diff / 60), 'minute');
   if (abs < 86400) return rtf.format(Math.round(diff / 3600), 'hour');
   if (abs < 86400 * 30) return rtf.format(Math.round(diff / 86400), 'day');
-  return new Date(iso).toLocaleDateString('ru-RU');
+  return new Date(iso).toLocaleDateString(i18n.dateLocale);
 }
-const fmtDate = (iso) => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'medium', timeStyle: 'short' });
+const fmtDate = (iso) => new Date(iso).toLocaleString(i18n.dateLocale, { dateStyle: 'medium', timeStyle: 'short' });
 const time = (iso) => h('time', { datetime: iso, title: fmtDate(iso), class: 'muted small' }, fmtAgo(iso));
 
 const statusChip = (s) => h('span', { class: `chip st-${s}` }, h('span', { class: 'dot' }), STATUS[s] ?? s);
@@ -165,13 +170,13 @@ function avatar(name, kind) {
 const kindOf = (name) => state.accounts.find((a) => a.name === name)?.kind;
 
 // An entry that an agent wrote down for a person: who did it, and the person's own words.
-const recordedChip = (name) => name && h('span', { class: 'chip', title: 'Записано агентом со слов автора' }, `записал ${name}`);
+const recordedChip = (name) => name && h('span', { class: 'chip', title: i18n.t('Записано агентом со слов автора') }, i18n.t`записал ${name}`);
 const originalWords = (text) =>
-  text && h('details', { class: 'original' }, h('summary', null, 'Исходное сообщение'), h('blockquote', null, text));
+  text && h('details', { class: 'original' }, h('summary', null, i18n.t('Исходное сообщение')), h('blockquote', null, text));
 
 function runChips(model, effort) {
   return [
-    model && h('span', { class: 'chip mono', title: 'Модель' }, model),
+    model && h('span', { class: 'chip mono', title: i18n.t('Модель') }, model),
     effort && h('span', { class: 'chip mono', title: 'Effort' }, effort),
   ];
 }
@@ -209,7 +214,7 @@ function inline(text, files = []) {
       out.push(
         image
           ? h('a', { class: 'md-img', href: image.url, target: '_blank', onclick: image.id && ((e) => (e.preventDefault(), openViewer(files.some((f) => f.id === image.id) ? files : [image], image))) }, h('img', { src: image.url, alt: g.alt || image.filename, loading: 'lazy' }))
-          : h('span', { class: 'muted', title: 'Приложите файл к задаче, чтобы картинка появилась' }, `[изображение: ${g.alt || g.src}]`),
+          : h('span', { class: 'muted', title: i18n.t('Приложите файл к задаче, чтобы картинка появилась') }, i18n.t`[изображение: ${g.alt || g.src}]`),
       );
     } else if (g.code != null) out.push(h('code', null, g.code));
     else if (g.bold != null) out.push(h('strong', null, g.bold));
@@ -227,7 +232,7 @@ function inline(text, files = []) {
 let mentionMenus = 0;
 function offerMentions(textarea) {
   const id = `mentions-${++mentionMenus}`;
-  const menu = h('ul', { class: 'mention-menu', role: 'listbox', id, hidden: true, 'aria-label': 'Кого упомянуть' });
+  const menu = h('ul', { class: 'mention-menu', role: 'listbox', id, hidden: true, 'aria-label': i18n.t('Кого упомянуть') });
   let found = [];
   let at = 0;
   let from = -1;
@@ -253,7 +258,7 @@ function offerMentions(textarea) {
           },
           avatar(a.name, a.kind),
           h('span', null, a.name),
-          h('span', { class: 'muted small' }, a.kind === 'human' ? 'человек' : a.system ?? 'агент'),
+          h('span', { class: 'muted small' }, a.kind === 'human' ? i18n.t('человек') : a.system ?? i18n.t('агент')),
         ),
       ),
     );
@@ -400,7 +405,7 @@ function toast(message) {
 async function flushOutbox() {
   const sent = await pwa.flushOutbox(api).catch(() => 0);
   if (sent) {
-    toast(sent === 1 ? 'Отложенный комментарий отправлен' : `Отправлено отложенных комментариев: ${sent}`);
+    toast(sent === 1 ? i18n.t('Отложенный комментарий отправлен') : i18n.t`Отправлено отложенных комментариев: ${sent}`);
     state.poll?.().catch(() => {});
   }
 }
@@ -438,28 +443,29 @@ function shell(active, ...content) {
     h(
       'header',
       { class: 'topbar' },
-      h('a', { class: 'brand', href: '#/projects', title: release() && `Версия ${release()}` }, h('img', { class: 'brand-icon', src: '/icons/favicon-32.png', alt: '' }), 'AI Guild', h('span', { class: 'version desktop-only' }, state.config?.version ? `${state.config.version} · ${state.config.build}` : '')),
+      h('a', { class: 'brand', href: '#/projects', title: release() && i18n.t`Версия ${release()}` }, h('img', { class: 'brand-icon', src: '/icons/favicon-32.png', alt: '' }), 'AI Guild', h('span', { class: 'version desktop-only' }, state.config?.version ? `${state.config.version} · ${state.config.build}` : '')),
       h(
         'nav',
         { class: 'nav row', style: 'flex-wrap:nowrap;gap:2px' },
-        link('#/projects', 'Проекты', 'projects'),
-        link('#/board', 'Доска', 'board'),
-        link('#/timeline', 'График', 'timeline', null, 'desktop-only'),
-        link('#/tasks', 'Задачи', 'tasks', null, 'desktop-only'),
-        link('#/inbox', 'Входящие', 'inbox', state.inboxCount ? h('span', { class: 'badge' }, String(state.inboxCount)) : null),
-        link('#/analytics', 'Аналитика', 'analytics', null, 'desktop-only'),
-        link('#/accounts', 'Аккаунты', 'accounts', null, 'desktop-only'),
-        link('#/connect', 'Подключение', 'connect', null, 'desktop-only'),
+        link('#/projects', i18n.t('Проекты'), 'projects'),
+        link('#/board', i18n.t('Доска'), 'board'),
+        link('#/timeline', i18n.t('График'), 'timeline', null, 'desktop-only'),
+        link('#/tasks', i18n.t('Задачи'), 'tasks', null, 'desktop-only'),
+        link('#/inbox', i18n.t('Входящие'), 'inbox', state.inboxCount ? h('span', { class: 'badge' }, String(state.inboxCount)) : null),
+        link('#/analytics', i18n.t('Аналитика'), 'analytics', null, 'desktop-only'),
+        link('#/accounts', i18n.t('Аккаунты'), 'accounts', null, 'desktop-only'),
+        link('#/connect', i18n.t('Подключение'), 'connect', null, 'desktop-only'),
       ),
       h('span', { class: 'spacer' }),
+      i18n.languagePicker(),
       h(
         'a',
-        { href: '#/profile', class: `row profile-link ${active === 'profile' ? 'active' : ''}`, style: 'flex-wrap:nowrap', title: 'Профиль и устройство' },
+        { href: '#/profile', class: `row profile-link ${active === 'profile' ? 'active' : ''}`, style: 'flex-wrap:nowrap', title: i18n.t('Профиль и устройство') },
         avatar(state.me.name, state.me.kind),
         h('span', { class: 'small' }, state.me.name),
       ),
     ),
-    h('div', { class: 'offline-bar', role: 'status' }, 'Нет сети — показаны сохранённые данные'),
+    h('div', { class: 'offline-bar', role: 'status' }, i18n.t('Нет сети — показаны сохранённые данные')),
     h('main', null, content),
   ];
 }
@@ -483,7 +489,7 @@ function loginView() {
       await pwa.passkeySignIn(api);
       await boot();
     } catch (ex) {
-      err.textContent = ex.message === 'passkey sign-in failed' ? 'Этот passkey не подходит' : ex.message;
+      err.textContent = ex.message === 'passkey sign-in failed' ? i18n.t('Этот passkey не подходит') : ex.message;
       e.target.disabled = false;
     }
   };
@@ -504,25 +510,25 @@ function loginView() {
           } catch (ex) {
             err.textContent =
               ex.message === 'invalid API key'
-                ? 'Такого ключа нет. Возможно, его перевыпустили.'
+                ? i18n.t('Такого ключа нет. Возможно, его перевыпустили.')
                 : ex.message === 'missing or malformed API key'
-                  ? 'Это не ключ. Ключ — длинная строка, которая начинается с ait_; имя аккаунта не подходит.'
+                  ? i18n.t('Это не ключ. Ключ — длинная строка, которая начинается с ait_; имя аккаунта не подходит.')
                   : ex.message;
           }
         },
       },
-      h('h1', null, 'AI Guild'),
-      h('p', { class: 'muted', style: 'margin:0' }, 'Войдите способом, который привязан к вашему аккаунту.'),
+      h('div', { class: 'row' }, h('h1', { style: 'margin:0' }, 'AI Guild'), h('span', { class: 'spacer' }), i18n.languagePicker()),
+      h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Войдите способом, который привязан к вашему аккаунту.')),
       providerButtons(err),
-      !Object.values(state.config?.providers ?? {}).some(Boolean) && h('p', { class: 'muted small', style: 'margin:0' }, 'Вход через Google и Telegram пока не настроен администратором.'),
-      passkeys && h('button', { type: 'button', class: 'primary big', onclick: withPasskey }, `Войти с ${pwa.biometryName()}`),
-      passkeys && h('div', { class: 'divider' }, 'или'),
-      h('p', { class: 'muted small', style: 'margin:0' }, 'Первый вход — по приглашению администратора. Если у вас уже есть API-ключ, можно войти с ним.'),
-      h('label', { class: 'field' }, 'API-ключ', input),
-      h('p', { class: 'muted small', style: 'margin:0' }, 'Ключ выдаётся при создании аккаунта. На компьютере, где работает трекер, ключи лежат в папке ~/.config/ai-tracker.'),
+      !Object.values(state.config?.providers ?? {}).some(Boolean) && h('p', { class: 'muted small', style: 'margin:0' }, i18n.t('Вход через Google и Telegram пока не настроен администратором.')),
+      passkeys && h('button', { type: 'button', class: 'primary big', onclick: withPasskey }, i18n.t`Войти с ${pwa.biometryName()}`),
+      passkeys && h('div', { class: 'divider' }, i18n.t('или')),
+      h('p', { class: 'muted small', style: 'margin:0' }, i18n.t('Первый вход — по приглашению администратора. Если у вас уже есть API-ключ, можно войти с ним.')),
+      h('label', { class: 'field' }, i18n.t('API-ключ'), input),
+      h('p', { class: 'muted small', style: 'margin:0' }, i18n.t('Ключ выдаётся при создании аккаунта. На компьютере, где работает трекер, ключи лежат в папке ~/.config/ai-tracker.')),
       err,
-      h('button', { class: passkeys ? '' : 'primary' }, 'Войти по ключу'),
-      release() && h('p', { class: 'muted small', style: 'margin:0;text-align:center' }, `Версия ${release()}`),
+      h('button', { class: passkeys ? '' : 'primary' }, i18n.t('Войти по ключу')),
+      release() && h('p', { class: 'muted small', style: 'margin:0;text-align:center' }, i18n.t`Версия ${release()}`),
     ),
   );
 }
@@ -531,7 +537,7 @@ const providerLabels = { google: 'Google', telegram: 'Telegram' };
 function providerButtons(err, intent = 'login', invitationToken) {
   return h('div', { class: 'stack' }, Object.entries(providerLabels).map(([provider, label]) =>
     h('button', { type: 'button', class: 'big', disabled: !state.config?.providers?.[provider],
-      title: state.config?.providers?.[provider] ? '' : `${label} пока не настроен администратором`,
+      title: state.config?.providers?.[provider] ? '' : i18n.t`${label} пока не настроен администратором`,
       onclick: async (e) => {
         const button = e.currentTarget;
         button.disabled = true;
@@ -542,7 +548,7 @@ function providerButtons(err, intent = 'login', invitationToken) {
           location.assign(result.authorization_url);
         } catch (error) { err.textContent = error.message; button.disabled = false; }
       },
-    }, `${intent === 'link' || invitationToken ? 'Привязать' : 'Войти через'} ${label}`),
+    }, `${intent === 'link' || invitationToken ? i18n.t('Привязать') : i18n.t('Войти через')} ${label}`),
   ));
 }
 
@@ -551,17 +557,17 @@ async function invitationView(token) {
   let invite;
   try { invite = await api('POST', '/auth/invitations/inspect', { token }); }
   catch { return h('main', null, h('section', { class: 'card pad stack login' },
-    h('h1', null, 'Приглашение недоступно'),
-    h('p', null, 'Ссылка уже использована, истекла или была заменена. Попросите администратора выдать новую.'),
-    h('a', { href: '#/' }, 'Перейти ко входу'))); }
+    h('h1', null, i18n.t('Приглашение недоступно')),
+    h('p', null, i18n.t('Ссылка уже использована, истекла или была заменена. Попросите администратора выдать новую.')),
+    h('a', { href: '#/' }, i18n.t('Перейти ко входу')))); }
   return h('main', null, h('section', { class: 'card pad stack login' },
-    h('h1', null, 'Добро пожаловать'), h('p', { style: 'margin:0' }, 'Администратор пригласил вас в AI Guild.'),
+    h('h1', null, i18n.t('Добро пожаловать')), h('p', { style: 'margin:0' }, i18n.t('Администратор пригласил вас в AI Guild.')),
     h('div', { class: 'row' }, avatar(invite.name, 'human'), h('strong', null, invite.name)),
-    h('p', { class: 'muted', style: 'margin:0' }, 'Выберите аккаунт для входа. Он будет привязан к вашему профилю.'),
+    h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Выберите аккаунт для входа. Он будет привязан к вашему профилю.')),
     providerButtons(err, 'login', token), err,
-    !Object.values(state.config?.providers ?? {}).some(Boolean) && h('p', { class: 'muted small' }, 'Администратору нужно настроить Google или Telegram. Ссылка останется доступной до указанного срока.'),
-    h('p', { class: 'muted small', style: 'margin:0' }, `Ссылка действует до ${fmtDate(invite.expires_at)}. Второй способ входа можно добавить в профиле.`),
-    state.me && h('p', { class: 'muted small' }, `Сейчас вы вошли как ${state.me.name}. По приглашению будет открыт аккаунт ${invite.name}.`),
+    !Object.values(state.config?.providers ?? {}).some(Boolean) && h('p', { class: 'muted small' }, i18n.t('Администратору нужно настроить Google или Telegram. Ссылка останется доступной до указанного срока.')),
+    h('p', { class: 'muted small', style: 'margin:0' }, i18n.t`Ссылка действует до ${fmtDate(invite.expires_at)}. Второй способ входа можно добавить в профиле.`),
+    state.me && h('p', { class: 'muted small' }, i18n.t`Сейчас вы вошли как ${state.me.name}. По приглашению будет открыт аккаунт ${invite.name}.`),
   ));
 }
 
@@ -581,7 +587,7 @@ function dialog(title, build) {
   const close = () => dlg.close();
   const form = h('form', { method: 'dialog' }, h('h2', null, title));
   build(form, { close, err });
-  form.append(err);
+  appendChildren(form, err);
   dlg.append(form);
   document.body.append(dlg);
   dlg.showModal();
@@ -593,7 +599,7 @@ function dialog(title, build) {
 const filters = { status: 'open', assignee: '', project: '', level: '', kind: '', q: '' };
 
 async function tasksView() {
-  const list = h('div', { class: 'card task-list' }, h('div', { class: 'empty' }, 'Загрузка…'));
+  const list = h('div', { class: 'card task-list' }, h('div', { class: 'empty' }, i18n.t('Загрузка…')));
   const projects = await api('GET', '/projects').catch(() => []);
 
   const load = async () => {
@@ -601,7 +607,7 @@ async function tasksView() {
     try {
       const tasks = await api('GET', `/tasks?${qs}`);
       list.replaceChildren(
-        ...(tasks.length ? treeRows(tasks) : [h('div', { class: 'empty' }, 'Задач по этим фильтрам нет')]),
+        ...(tasks.length ? treeRows(tasks) : [h('div', { class: 'empty' }, i18n.t('Задач по этим фильтрам нет'))]),
       );
     } catch (ex) {
       list.replaceChildren(h('div', { class: 'empty error' }, ex.message));
@@ -624,51 +630,51 @@ async function tasksView() {
     h(
       'div',
       { class: 'page-head' },
-      h('h1', null, 'Задачи'),
+      h('h1', null, i18n.t('Задачи')),
       h('span', { class: 'spacer' }),
-      h('button', { class: 'primary', onclick: () => newTaskDialog(projects) }, 'Новая задача'),
+      h('button', { class: 'primary', onclick: () => newTaskDialog(projects) }, i18n.t('Новая задача')),
     ),
     h(
       'div',
       { class: 'filters' },
       h(
         'select',
-        { 'aria-label': 'Статус', ...bind('status') },
-        h('option', { value: 'open' }, 'Открытые'),
-        h('option', { value: '' }, 'Все'),
+        { 'aria-label': i18n.t('Статус'), ...bind('status') },
+        h('option', { value: 'open' }, i18n.t('Открытые')),
+        h('option', { value: '' }, i18n.t('Все')),
         Object.entries(STATUS).map(([v, l]) => h('option', { value: v }, l)),
       ),
       h(
         'select',
-        { 'aria-label': 'Исполнитель', ...bind('assignee') },
-        h('option', { value: '' }, 'Любой исполнитель'),
-        h('option', { value: 'me' }, 'Я'),
-        h('option', { value: 'none' }, 'Не назначен'),
+        { 'aria-label': i18n.t('Исполнитель'), ...bind('assignee') },
+        h('option', { value: '' }, i18n.t('Любой исполнитель')),
+        h('option', { value: 'me' }, i18n.t('Я')),
+        h('option', { value: 'none' }, i18n.t('Не назначен')),
         state.accounts.filter((a) => !a.disabled).map((a) => h('option', { value: a.name }, a.name)),
       ),
       h(
         'select',
-        { 'aria-label': 'Проект', ...bind('project') },
-        h('option', { value: '' }, 'Все проекты'),
+        { 'aria-label': i18n.t('Проект'), ...bind('project') },
+        h('option', { value: '' }, i18n.t('Все проекты')),
         projects.map((p) => h('option', { value: p }, p)),
       ),
       h(
         'select',
-        { 'aria-label': 'Уровень', ...bind('level') },
-        h('option', { value: '' }, 'Все уровни'),
+        { 'aria-label': i18n.t('Уровень'), ...bind('level') },
+        h('option', { value: '' }, i18n.t('Все уровни')),
         Object.entries(LEVEL).map(([v, l]) => h('option', { value: v }, l)),
       ),
       h(
         'select',
-        { 'aria-label': 'Тип', ...bind('kind') },
-        h('option', { value: '' }, 'Все типы'),
+        { 'aria-label': i18n.t('Тип'), ...bind('kind') },
+        h('option', { value: '' }, i18n.t('Все типы')),
         Object.entries(KIND).map(([v, l]) => h('option', { value: v }, l)),
-        h('option', { value: 'none' }, 'Без типа'),
+        h('option', { value: 'none' }, i18n.t('Без типа')),
       ),
       h('input', {
         type: 'search',
-        placeholder: 'Поиск…',
-        'aria-label': 'Поиск',
+        placeholder: i18n.t('Поиск…'),
+        'aria-label': i18n.t('Поиск'),
         value: filters.q,
         oninput: (e) => {
           filters.q = e.target.value;
@@ -695,7 +701,7 @@ function taskRow(t, depth = 0) {
         { class: 'task-meta' },
         levelChip(t.level),
         kindChip(t.kind),
-        t.child_count > 0 && h('span', { title: 'Готово из вложенных' }, `${t.child_done}/${t.child_count}`),
+        t.child_count > 0 && h('span', { title: i18n.t('Готово из вложенных') }, `${t.child_done}/${t.child_count}`),
         t.project && h('span', null, t.project),
         ['high', 'urgent'].includes(t.priority) && h('span', { class: `prio-${t.priority}` }, PRIORITY[t.priority]),
         t.labels.map((l) => h('span', { class: 'chip' }, l)),
@@ -704,12 +710,12 @@ function taskRow(t, depth = 0) {
     h(
       'div',
       { class: 'task-meta' },
-      t.total_seconds > 0 && h('span', { title: 'Затрачено времени' }, '⏱ ' + fmtDuration(t.total_seconds)),
-      t.comment_count > 0 && h('span', { title: 'Комментарии' }, '💬 ' + t.comment_count),
-      t.attachment_count > 0 && h('span', { title: 'Вложения' }, '📎 ' + t.attachment_count),
+      t.total_seconds > 0 && h('span', { title: i18n.t('Затрачено времени') }, '⏱ ' + fmtDuration(t.total_seconds)),
+      t.comment_count > 0 && h('span', { title: i18n.t('Комментарии') }, '💬 ' + t.comment_count),
+      t.attachment_count > 0 && h('span', { title: i18n.t('Вложения') }, '📎 ' + t.attachment_count),
       t.assignee_name
         ? h('span', { class: 'row', style: 'gap:4px;flex-wrap:nowrap' }, avatar(t.assignee_name, kindOf(t.assignee_name)), t.assignee_name)
-        : h('span', null, 'не назначен'),
+        : h('span', null, i18n.t('не назначен')),
       time(t.updated_at),
     ),
   );
@@ -718,9 +724,9 @@ function taskRow(t, depth = 0) {
 const treeRows = (tasks) => asTree(tasks).map(([t, depth]) => taskRow(t, depth));
 
 function newTaskDialog(projects, preset = {}) {
-  dialog('Новая задача', (form, { close, err }) => {
+  dialog(i18n.t('Новая задача'), (form, { close, err }) => {
     const title = h('input', { required: true, maxlength: 300, autofocus: true, value: preset.title ?? '' });
-    const description = h('textarea', { placeholder: 'Что нужно сделать. Markdown; картинку можно вставить из буфера или перетащить.' });
+    const description = h('textarea', { placeholder: i18n.t('Что нужно сделать. Markdown; картинку можно вставить из буфера или перетащить.') });
     description.value = preset.text ?? '';
     const shared = [...(preset.files ?? [])];
     acceptImages(description, (file) => shared.push(file));
@@ -728,8 +734,8 @@ function newTaskDialog(projects, preset = {}) {
     const assignee = h(
       'select',
       null,
-      h('option', { value: '' }, 'Не назначен'),
-      state.accounts.filter((a) => !a.disabled).map((a) => h('option', { value: a.name }, `${a.name} (${a.kind === 'agent' ? 'агент' : 'человек'})`)),
+      h('option', { value: '' }, i18n.t('Не назначен')),
+      state.accounts.filter((a) => !a.disabled).map((a) => h('option', { value: a.name }, `${a.name} (${a.kind === 'agent' ? i18n.t('агент') : i18n.t('человек')})`)),
     );
     const priority = h('select', null, Object.entries(PRIORITY).map(([v, l]) => h('option', { value: v, selected: v === 'normal' }, l)));
     const project = h('input', { list: 'projects', maxlength: 100, value: preset.project ?? '' });
@@ -738,20 +744,20 @@ function newTaskDialog(projects, preset = {}) {
     const allowed = parent ? LEVELS.slice(LEVELS.indexOf(parent.level) + 1) : LEVELS;
     const wanted = preset.level ?? (parent ? allowed[0] : 'task');
     const level = h('select', null, allowed.map((v) => h('option', { value: v, selected: v === wanted }, LEVEL[v])));
-    const kind = h('select', null, h('option', { value: '' }, 'Не указан'), Object.entries(KIND).map(([v, l]) => h('option', { value: v, selected: v === preset.kind }, l)));
-    form.append(
-      parent && h('div', { class: 'muted small' }, 'Входит в: ', levelChip(parent.level), ` #${parent.id} ${parent.title}`),
-      h('label', { class: 'field' }, 'Название', title),
-      h('label', { class: 'field' }, 'Описание', description),
-      h('div', { class: 'grid-2' }, h('label', { class: 'field' }, 'Уровень', level), h('label', { class: 'field' }, 'Тип', kind)),
-      h('div', { class: 'grid-2' }, h('label', { class: 'field' }, 'Исполнитель', assignee), h('label', { class: 'field' }, 'Приоритет', priority)),
-      !parent && h('label', { class: 'field' }, 'Проект', project, h('datalist', { id: 'projects' }, projects.map((p) => h('option', { value: p })))),
-      preset.files?.length > 0 && h('div', { class: 'muted small' }, `Будут приложены: ${preset.files.map((f) => f.name).join(', ')}`),
+    const kind = h('select', null, h('option', { value: '' }, i18n.t('Не указан')), Object.entries(KIND).map(([v, l]) => h('option', { value: v, selected: v === preset.kind }, l)));
+    appendChildren(form,
+      parent && h('div', { class: 'muted small' }, i18n.t('Входит в: '), levelChip(parent.level), ` #${parent.id} ${parent.title}`),
+      h('label', { class: 'field' }, i18n.t('Название'), title),
+      h('label', { class: 'field' }, i18n.t('Описание'), description),
+      h('div', { class: 'grid-2' }, h('label', { class: 'field' }, i18n.t('Уровень'), level), h('label', { class: 'field' }, i18n.t('Тип'), kind)),
+      h('div', { class: 'grid-2' }, h('label', { class: 'field' }, i18n.t('Исполнитель'), assignee), h('label', { class: 'field' }, i18n.t('Приоритет'), priority)),
+      !parent && h('label', { class: 'field' }, i18n.t('Проект'), project, h('datalist', { id: 'projects' }, projects.map((p) => h('option', { value: p })))),
+      preset.files?.length > 0 && h('div', { class: 'muted small' }, i18n.t`Будут приложены: ${preset.files.map((f) => f.name).join(', ')}`),
       h(
         'div',
         { class: 'row', style: 'justify-content:flex-end' },
-        h('button', { type: 'button', class: 'ghost', onclick: close }, 'Отмена'),
-        h('button', { class: 'primary' }, 'Создать'),
+        h('button', { type: 'button', class: 'ghost', onclick: close }, i18n.t('Отмена')),
+        h('button', { class: 'primary' }, i18n.t('Создать')),
       ),
     );
     form.addEventListener('submit', async (e) => {
@@ -780,16 +786,16 @@ function newTaskDialog(projects, preset = {}) {
 // ---------- task detail ----------
 
 const EVENT_TEXT = {
-  task_created: () => 'создал(а) задачу',
-  task_assigned: (d) => (d.assignee ? `назначил(а) исполнителем ${d.assignee}` : 'снял(а) исполнителя'),
-  status_changed: (d) => `сменил(а) статус: ${STATUS[d.from] ?? d.from} → ${STATUS[d.to] ?? d.to}`,
-  task_edited: (d) => `изменил(а): ${(d.fields ?? []).join(', ')}`,
-  result_submitted: (d) => `отправил(а) результат → ${STATUS[d.to] ?? d.to}`,
-  attachment_added: (d) => `приложил(а) файл ${d.filename}`,
-  link_added: (d) => `добавил(а) связь: ${(LINK[d.type] ?? d.type).toLowerCase()} #${d.task_id}`,
+  task_created: () => i18n.t('создал(а) задачу'),
+  task_assigned: (d) => (d.assignee ? i18n.t`назначил(а) исполнителем ${d.assignee}` : i18n.t('снял(а) исполнителя')),
+  status_changed: (d) => i18n.t`сменил(а) статус: ${STATUS[d.from] ?? d.from} → ${STATUS[d.to] ?? d.to}`,
+  task_edited: (d) => i18n.t`изменил(а): ${(d.fields ?? []).join(', ')}`,
+  result_submitted: (d) => i18n.t`отправил(а) результат → ${STATUS[d.to] ?? d.to}`,
+  attachment_added: (d) => i18n.t`приложил(а) файл ${d.filename}`,
+  link_added: (d) => i18n.t`добавил(а) связь: ${(LINK[d.type] ?? d.type).toLowerCase()} #${d.task_id}`,
   agent_run: (d) =>
-    ({ started: 'запущен по сообщению человека', finished: 'закончил запуск', failed: `запуск не удался${d.detail ? `: ${d.detail.slice(-300)}` : ''}` })[d.state] ?? d.state,
-  link_removed: (d) => `убрал(а) связь: ${(LINK[d.type] ?? d.type).toLowerCase()} #${d.task_id}`,
+    ({ started: i18n.t('запущен по сообщению человека'), finished: i18n.t('закончил запуск'), failed: i18n.t`запуск не удался${d.detail ? `: ${d.detail.slice(-300)}` : ''}` })[d.state] ?? d.state,
+  link_removed: (d) => i18n.t`убрал(а) связь: ${(LINK[d.type] ?? d.type).toLowerCase()} #${d.task_id}`,
 };
 
 // ---------- attachment viewer ----------
@@ -809,10 +815,10 @@ function openViewer(files, current) {
   const stage = h('div', { class: 'viewer-stage' });
   const title = h('div', { class: 'viewer-title' });
   const actions = h('div', { class: 'row', style: 'gap:6px;flex-wrap:nowrap' });
-  const strip = h('div', { class: 'viewer-strip', role: 'tablist', 'aria-label': 'Вложения' });
+  const strip = h('div', { class: 'viewer-strip', role: 'tablist', 'aria-label': i18n.t('Вложения') });
   const step = (by) => show((at + by + items.length) % items.length);
-  const prev = h('button', { class: 'viewer-nav prev', 'aria-label': 'Предыдущее', onclick: () => step(-1) }, '‹');
-  const next = h('button', { class: 'viewer-nav next', 'aria-label': 'Следующее', onclick: () => step(1) }, '›');
+  const prev = h('button', { class: 'viewer-nav prev', 'aria-label': i18n.t('Предыдущее'), onclick: () => step(-1) }, '‹');
+  const next = h('button', { class: 'viewer-nav next', 'aria-label': i18n.t('Следующее'), onclick: () => step(1) }, '›');
 
   const content = (a) => {
     if (isPicture(a)) return h('img', { src: a.url, alt: a.filename });
@@ -832,14 +838,14 @@ function openViewer(files, current) {
     stage.replaceChildren(content(a));
     title.replaceChildren(
       h('strong', { title: a.filename }, a.filename),
-      h('span', { class: 'muted small' }, `${fmtSize(a.size)} · ${a.account_name}${items.length > 1 ? ` · ${at + 1} из ${items.length}` : ''}`),
+      h('span', { class: 'muted small' }, `${fmtSize(a.size)} · ${a.account_name}${items.length > 1 ? i18n.t` · ${at + 1} из ${items.length}` : ''}`),
     );
     actions.replaceChildren(
       ...[
         isPage(a) &&
-          h('button', { class: 'small', 'aria-pressed': String(asSource), onclick: () => ((asSource = !asSource), show(at)) }, asSource ? 'Страница' : 'Исходный код'),
-        h('a', { class: 'button small', href: a.url, download: a.filename }, 'Скачать'),
-        h('button', { class: 'small', 'aria-label': 'Закрыть', onclick: () => dlg.close() }, '✕'),
+          h('button', { class: 'small', 'aria-pressed': String(asSource), onclick: () => ((asSource = !asSource), show(at)) }, asSource ? i18n.t('Страница') : i18n.t('Исходный код')),
+        h('a', { class: 'button small', href: a.url, download: a.filename }, i18n.t('Скачать')),
+        h('button', { class: 'small', 'aria-label': i18n.t('Закрыть'), onclick: () => dlg.close() }, '✕'),
       ].filter(Boolean),
     );
     for (const [i, tab] of [...strip.children].entries()) {
@@ -862,7 +868,7 @@ function openViewer(files, current) {
     'dialog',
     {
       class: 'viewer',
-      'aria-label': 'Просмотр вложения',
+      'aria-label': i18n.t('Просмотр вложения'),
       onclose: () => dlg.remove(),
       // A click outside the content lands on the dialog or the stage themselves.
       onclick: (e) => (e.target === dlg || e.target === stage) && dlg.close(),
@@ -920,8 +926,8 @@ async function taskView(id) {
     head.replaceChildren(...[
       h(
         'nav',
-        { class: 'small crumbs', 'aria-label': 'Путь' },
-        t.project ? h('a', { href: `#/projects/${encodeURIComponent(t.project)}` }, t.project) : h('a', { href: '#/tasks' }, 'Все задачи'),
+        { class: 'small crumbs', 'aria-label': i18n.t('Путь') },
+        t.project ? h('a', { href: `#/projects/${encodeURIComponent(t.project)}` }, t.project) : h('a', { href: '#/tasks' }, i18n.t('Все задачи')),
         t.ancestors.map((p) => [h('span', { class: 'muted', 'aria-hidden': 'true' }, ' › '), h('a', { href: `#/tasks/${p.id}` }, `${LEVEL[p.level]} #${p.id} ${p.title}`)]),
       ),
       h('div', { class: 'page-head' }, h('h1', null, h('span', { class: 'muted' }, `#${t.id} `), t.title), statusChip(t.status), levelChip(t.level), kindChip(t.kind)),
@@ -929,21 +935,21 @@ async function taskView(id) {
         h(
           'div',
           { class: 'card review-bar' },
-          h('div', null, h('strong', null, 'Ждёт вашего решения. '), `${t.result_by_name ?? t.assignee_name ?? 'Агент'} сдал работу — посмотрите результат ниже.`),
+          h('div', null, h('strong', null, i18n.t('Ждёт вашего решения. ')), i18n.t`${t.result_by_name ?? t.assignee_name ?? i18n.t('Агент')} сдал работу — посмотрите результат ниже.`),
           h(
             'div',
             { class: 'row' },
-            h('button', { class: 'primary', onclick: () => patch({ status: 'done' }) }, 'Принять'),
+            h('button', { class: 'primary', onclick: () => patch({ status: 'done' }) }, i18n.t('Принять')),
             h(
               'button',
               {
                 onclick: async () => {
                   await patch({ status: 'in_progress' });
-                  text.placeholder = 'Что доделать? Агент увидит это в своих входящих.';
+                  text.placeholder = i18n.t('Что доделать? Агент увидит это в своих входящих.');
                   text.focus();
                 },
               },
-              'Вернуть в работу',
+              i18n.t('Вернуть в работу'),
             ),
           ),
         ),
@@ -973,9 +979,9 @@ async function taskView(id) {
           runChips(t.model, t.effort),
           h('span', { class: 'spacer' }),
           time(t.created_at),
-          h('button', { class: 'ghost small', onclick: () => editTaskDialog(t, load) }, 'Изменить'),
+          h('button', { class: 'ghost small', onclick: () => editTaskDialog(t, load) }, i18n.t('Изменить')),
         ),
-        h('div', { class: 'comment-body' }, t.description ? markdown(t.description, t.attachments) : h('span', { class: 'muted' }, 'Без описания'), originalWords(t.original_text)),
+        h('div', { class: 'comment-body' }, t.description ? markdown(t.description, t.attachments) : h('span', { class: 'muted' }, i18n.t('Без описания')), originalWords(t.original_text)),
       ),
       t.result &&
         h(
@@ -984,7 +990,7 @@ async function taskView(id) {
           h(
             'div',
             { class: 'comment-head' },
-            h('strong', null, 'Результат'),
+            h('strong', null, i18n.t('Результат')),
             t.result_by_name && h('span', null, '· ' + t.result_by_name),
             runChips(t.result_model, t.result_effort),
             h('span', { class: 'spacer' }),
@@ -999,10 +1005,10 @@ async function taskView(id) {
           h(
             'div',
             { class: 'comment-head' },
-            h('strong', null, 'Состоит из'),
-            t.children.length > 0 && h('span', { class: 'muted' }, `готово ${t.child_done} из ${t.child_count}`),
+            h('strong', null, i18n.t('Состоит из')),
+            t.children.length > 0 && h('span', { class: 'muted' }, i18n.t`готово ${t.child_done} из ${t.child_count}`),
             h('span', { class: 'spacer' }),
-            h('button', { class: 'ghost small', onclick: async () => newTaskDialog(await api('GET', '/projects').catch(() => []), { parent: t, kind: t.kind }) }, 'Добавить'),
+            h('button', { class: 'ghost small', onclick: async () => newTaskDialog(await api('GET', '/projects').catch(() => []), { parent: t, kind: t.kind }) }, i18n.t('Добавить')),
           ),
           t.children.length
             ? t.children.map((c) =>
@@ -1014,7 +1020,7 @@ async function taskView(id) {
                   h('div', { class: 'task-meta' }, levelChip(c.level), kindChip(c.kind), c.assignee_name),
                 ),
               )
-            : h('div', { class: 'comment-body muted small' }, 'Пока не разбита на части'),
+            : h('div', { class: 'comment-body muted small' }, i18n.t('Пока не разбита на части')),
         ),
     ];
     body.replaceChildren(...sections.filter(Boolean));
@@ -1030,7 +1036,7 @@ async function taskView(id) {
       h(
         'article',
         { class: 'card comment human pending' },
-        h('div', { class: 'comment-head' }, avatar(state.me.name, state.me.kind), h('strong', null, state.me.name), h('span', { class: 'chip' }, 'ждёт сети'), h('span', { class: 'spacer' }), time(c.at)),
+        h('div', { class: 'comment-head' }, avatar(state.me.name, state.me.kind), h('strong', null, state.me.name), h('span', { class: 'chip' }, i18n.t('ждёт сети')), h('span', { class: 'spacer' }), time(c.at)),
         h('div', { class: 'comment-body' }, markdown(c.body)),
       ),
     );
@@ -1083,25 +1089,25 @@ async function taskView(id) {
         h(
           'div',
           { class: 'kv' },
-          h('span', null, 'Статус'),
+          h('span', null, i18n.t('Статус')),
           select(t.status, Object.entries(STATUS), (v) => patch({ status: v })),
-          h('span', null, 'Исполнитель'),
+          h('span', null, i18n.t('Исполнитель')),
           select(
             t.assignee_name ?? '',
-            [['', 'Не назначен'], ...state.accounts.filter((a) => !a.disabled || a.name === t.assignee_name).map((a) => [a.name, a.name])],
+            [['', i18n.t('Не назначен')], ...state.accounts.filter((a) => !a.disabled || a.name === t.assignee_name).map((a) => [a.name, a.name])],
             (v) => patch({ assignee: v || null }),
           ),
-          h('span', null, 'Уровень'),
+          h('span', null, i18n.t('Уровень')),
           select(t.level, Object.entries(LEVEL), (v) => patch({ level: v })),
-          h('span', null, 'Тип'),
-          select(t.kind ?? '', [['', 'Не указан'], ...Object.entries(KIND)], (v) => patch({ kind: v || null })),
-          h('span', null, 'Приоритет'),
+          h('span', null, i18n.t('Тип')),
+          select(t.kind ?? '', [['', i18n.t('Не указан')], ...Object.entries(KIND)], (v) => patch({ kind: v || null })),
+          h('span', null, i18n.t('Приоритет')),
           select(t.priority, Object.entries(PRIORITY), (v) => patch({ priority: v })),
-          h('span', null, 'Проект'),
+          h('span', null, i18n.t('Проект')),
           h('input', { value: t.project ?? '', placeholder: '—', onchange: (e) => patch({ project: e.target.value.trim() || null }) }),
-          h('span', null, 'Создана'),
+          h('span', null, i18n.t('Создана')),
           h('span', { class: 'small' }, fmtDate(t.created_at)),
-          t.completed_at && [h('span', null, 'Завершена'), h('span', { class: 'small' }, fmtDate(t.completed_at))],
+          t.completed_at && [h('span', null, i18n.t('Завершена')), h('span', { class: 'small' }, fmtDate(t.completed_at))],
         ),
         err,
       ),
@@ -1109,8 +1115,8 @@ async function taskView(id) {
       h(
         'div',
         { class: 'card pad' },
-        h('div', { class: 'row', style: 'justify-content:space-between;margin-bottom:8px' }, h('h3', { style: 'margin:0' }, 'Время'), h('strong', null, fmtDuration(t.total_seconds))),
-        t.tree_seconds > t.total_seconds && h('div', { class: 'muted small', style: 'margin-bottom:8px' }, `С вложенными задачами: ${fmtDuration(t.tree_seconds)}`),
+        h('div', { class: 'row', style: 'justify-content:space-between;margin-bottom:8px' }, h('h3', { style: 'margin:0' }, i18n.t('Время')), h('strong', null, fmtDuration(t.total_seconds))),
+        t.tree_seconds > t.total_seconds && h('div', { class: 'muted small', style: 'margin-bottom:8px' }, i18n.t`С вложенными задачами: ${fmtDuration(t.tree_seconds)}`),
         t.time_logs.length
           ? t.time_logs.map((l) =>
               h(
@@ -1128,7 +1134,7 @@ async function taskView(id) {
                       [
                         l.input_tokens != null && `${fmtCompact(l.input_tokens)} in`,
                         l.output_tokens != null && `${fmtCompact(l.output_tokens)} out`,
-                        l.cache_read_tokens != null && `кэш ${fmtCompact(l.cache_read_tokens)}`,
+                        l.cache_read_tokens != null && i18n.t`кэш ${fmtCompact(l.cache_read_tokens)}`,
                         l.cost_usd != null && fmtMoney(l.cost_usd),
                       ]
                         .filter(Boolean)
@@ -1136,16 +1142,16 @@ async function taskView(id) {
                     ),
                   l.note && h('div', { class: 'muted small' }, l.note),
                 ),
-                l.seconds == null ? h('span', { class: 'running' }, '● идёт') : h('span', null, fmtDuration(l.seconds)),
+                l.seconds == null ? h('span', { class: 'running' }, i18n.t('● идёт')) : h('span', null, fmtDuration(l.seconds)),
               ),
             )
-          : h('div', { class: 'muted small' }, 'Время ещё не списывали'),
+          : h('div', { class: 'muted small' }, i18n.t('Время ещё не списывали')),
       ),
       h(
         'div',
         { class: 'card pad' },
-        h('h3', null, `Вложения${loose.length ? ` · ${loose.length}` : ''}`),
-        loose.length ? h('div', { class: 'files', style: 'grid-template-columns:1fr 1fr' }, loose.map((a) => fileCard(a, t.attachments))) : h('div', { class: 'muted small' }, 'Нет файлов'),
+        h('h3', null, i18n.t`Вложения${loose.length ? ` · ${loose.length}` : ''}`),
+        loose.length ? h('div', { class: 'files', style: 'grid-template-columns:1fr 1fr' }, loose.map((a) => fileCard(a, t.attachments))) : h('div', { class: 'muted small' }, i18n.t('Нет файлов')),
       ),
     );
   };
@@ -1168,18 +1174,18 @@ async function taskView(id) {
   try {
     await load();
   } catch (ex) {
-    return shell('tasks', h('div', { class: 'empty error' }, ex.message), h('p', { style: 'text-align:center' }, h('a', { href: '#/tasks' }, '← Все задачи')));
+    return shell('tasks', h('div', { class: 'empty error' }, ex.message), h('p', { style: 'text-align:center' }, h('a', { href: '#/tasks' }, i18n.t('← Все задачи'))));
   }
   state.poll = load;
 
-  const text = h('textarea', { placeholder: 'Комментарий для агентов. Упомяните через @имя; картинку можно вставить из буфера.', required: true });
+  const text = h('textarea', { placeholder: i18n.t('Комментарий для агентов. Упомяните через @имя; картинку можно вставить из буфера.'), required: true });
   const pasted = [];
   acceptImages(text, (file) => pasted.push(file));
   offerMentions(text);
-  const files = h('input', { type: 'file', multiple: true, 'aria-label': 'Файлы' });
+  const files = h('input', { type: 'file', multiple: true, 'aria-label': i18n.t('Файлы') });
   const reopen = h('input', { type: 'checkbox' });
   const formErr = h('div', { class: 'error small', role: 'alert' });
-  const send = h('button', { class: 'primary', title: `Отправить (${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'}+Enter)` }, 'Отправить');
+  const send = h('button', { class: 'primary', title: i18n.t`Отправить (${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'}+Enter)` }, i18n.t('Отправить'));
   const composer = h(
     'form',
     {
@@ -1200,24 +1206,24 @@ async function taskView(id) {
             // Keep the words: they go out by themselves once the connection is back.
             pwa.queueComment(id, text.value, reopen.checked);
             composer.reset();
-            toast('Нет сети. Комментарий отправится, когда связь вернётся');
+            toast(i18n.t('Нет сети. Комментарий отправится, когда связь вернётся'));
             await load().catch(() => {});
           } else {
-            formErr.textContent = pwa.isNetworkError(ex) ? 'Нет сети. Файлы можно отправить только со связью.' : ex.message;
+            formErr.textContent = pwa.isNetworkError(ex) ? i18n.t('Нет сети. Файлы можно отправить только со связью.') : ex.message;
           }
         } finally {
           send.disabled = false;
         }
       },
     },
-    h('h2', null, 'Комментарий'),
+    h('h2', null, i18n.t('Комментарий')),
     text,
     h(
       'div',
       { class: 'row' },
       files,
       h('span', { class: 'spacer' }),
-      h('label', { class: 'row small', style: 'gap:4px' }, reopen, 'Вернуть в работу'),
+      h('label', { class: 'row small', style: 'gap:4px' }, reopen, i18n.t('Вернуть в работу')),
       send,
     ),
     formErr,
@@ -1227,8 +1233,8 @@ async function taskView(id) {
 }
 
 function linksCard(t, reload, err) {
-  const type = h('select', { 'aria-label': 'Вид связи' }, Object.entries(LINK).map(([v, l]) => h('option', { value: v }, l)));
-  const other = h('input', { type: 'number', min: 1, placeholder: '№', 'aria-label': 'Номер задачи', style: 'width:72px', required: true });
+  const type = h('select', { 'aria-label': i18n.t('Вид связи') }, Object.entries(LINK).map(([v, l]) => h('option', { value: v }, l)));
+  const other = h('input', { type: 'number', min: 1, placeholder: '№', 'aria-label': i18n.t('Номер задачи'), style: 'width:72px', required: true });
   const run = async (fn) => {
     err.textContent = '';
     try {
@@ -1243,8 +1249,8 @@ function linksCard(t, reload, err) {
   return h(
     'div',
     { class: 'card pad' },
-    h('h3', null, `Связи${t.links.length ? ` · ${t.links.length}` : ''}`),
-    waiting.length > 0 && !['done', 'cancelled'].includes(t.status) && h('div', { class: 'blocked-note' }, `⚠ Ждёт ${waiting.length === 1 ? 'задачу' : 'задачи'} ${waiting.map((l) => '#' + l.task.id).join(', ')}`),
+    h('h3', null, i18n.t`Связи${t.links.length ? ` · ${t.links.length}` : ''}`),
+    waiting.length > 0 && !['done', 'cancelled'].includes(t.status) && h('div', { class: 'blocked-note' }, i18n.t`⚠ Ждёт ${waiting.length === 1 ? i18n.t('задачу') : i18n.t('задачи')} ${waiting.map((l) => '#' + l.task.id).join(', ')}`),
     t.links.map((l) =>
       h(
         'div',
@@ -1256,7 +1262,7 @@ function linksCard(t, reload, err) {
           h('a', { href: `#/tasks/${l.task.id}`, class: l.task.status === 'done' ? 'done' : '' }, `#${l.task.id} ${l.task.title}`),
           h('div', null, statusChip(l.task.status)),
         ),
-        h('button', { class: 'ghost small', title: 'Убрать связь', 'aria-label': `Убрать связь с задачей ${l.task.id}`, onclick: () => run(() => api('DELETE', `/tasks/${t.id}/links/${l.id}`)) }, '×'),
+        h('button', { class: 'ghost small', title: i18n.t('Убрать связь'), 'aria-label': i18n.t`Убрать связь с задачей ${l.task.id}`, onclick: () => run(() => api('DELETE', `/tasks/${t.id}/links/${l.id}`)) }, '×'),
       ),
     ),
     h(
@@ -1271,23 +1277,23 @@ function linksCard(t, reload, err) {
       },
       type,
       other,
-      h('button', { class: 'small' }, 'Связать'),
+      h('button', { class: 'small' }, i18n.t('Связать')),
     ),
   );
 }
 
 function editTaskDialog(t, reload) {
-  dialog(`Задача #${t.id}`, (form, { close, err }) => {
+  dialog(i18n.t`Задача #${t.id}`, (form, { close, err }) => {
     const title = h('input', { required: true, maxlength: 300, value: t.title });
-    const description = h('textarea', { style: 'min-height:220px', placeholder: 'Markdown; картинку можно вставить из буфера или перетащить.' });
+    const description = h('textarea', { style: 'min-height:220px', placeholder: i18n.t('Markdown; картинку можно вставить из буфера или перетащить.') });
     description.value = t.description;
     const added = [];
     acceptImages(description, (file) => added.push(file));
     offerMentions(description);
-    form.append(
-      h('label', { class: 'field' }, 'Название', title),
-      h('label', { class: 'field' }, 'Описание', description),
-      h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { type: 'button', class: 'ghost', onclick: close }, 'Отмена'), h('button', { class: 'primary' }, 'Сохранить')),
+    appendChildren(form,
+      h('label', { class: 'field' }, i18n.t('Название'), title),
+      h('label', { class: 'field' }, i18n.t('Описание'), description),
+      h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { type: 'button', class: 'ghost', onclick: close }, i18n.t('Отмена')), h('button', { class: 'primary' }, i18n.t('Сохранить'))),
     );
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1318,14 +1324,14 @@ function projectLogo(p, size) {
 // Parts of a whole: one bar, split by status, with the legend carrying the names.
 function statusBar(p) {
   const parts = STATUS_ORDER.map((s) => [s, p.tasks_by_status[s] ?? 0]).filter(([, n]) => n > 0);
-  if (!parts.length) return h('div', { class: 'muted small' }, 'Задач пока нет');
+  if (!parts.length) return h('div', { class: 'muted small' }, i18n.t('Задач пока нет'));
   return h(
     'div',
     null,
     h(
       'div',
       { class: 'status-bar', role: 'img', 'aria-label': parts.map(([s, n]) => `${STATUS[s]}: ${n}`).join(', ') },
-      parts.map(([s, n]) => withTip(h('span', { class: `seg-${s}`, style: `flex-grow:${n}` }), STATUS[s], `${n} из ${p.tasks}`)),
+      parts.map(([s, n]) => withTip(h('span', { class: `seg-${s}`, style: `flex-grow:${n}` }), STATUS[s], i18n.t`${n} из ${p.tasks}`)),
     ),
     h('div', { class: 'status-legend' }, parts.map(([s, n]) => h('span', { class: `st-${s}` }, h('span', { class: 'dot' }), `${STATUS[s]} ${n}`))),
   );
@@ -1342,33 +1348,33 @@ function projectCard(p) {
       'div',
       { class: 'project-head' },
       projectLogo(p, 56),
-      h('div', { style: 'min-width:0' }, h('h2', null, p.name), h('div', { class: 'muted small' }, p.last_activity_at ? `Активность ${fmtAgo(p.last_activity_at)}` : 'Ещё не начат')),
+      h('div', { style: 'min-width:0' }, h('h2', null, p.name), h('div', { class: 'muted small' }, p.last_activity_at ? i18n.t`Активность ${fmtAgo(p.last_activity_at)}` : i18n.t('Ещё не начат'))),
     ),
-    h('p', { class: 'project-teaser' }, teaser(p.description) || h('span', { class: 'muted' }, 'Без описания')),
+    h('p', { class: 'project-teaser' }, teaser(p.description) || h('span', { class: 'muted' }, i18n.t('Без описания'))),
     statusBar(p),
     h(
       'div',
       { class: 'project-foot' },
       h('span', { class: 'row', style: 'gap:2px;flex-wrap:nowrap' }, p.members.map((m) => h('span', { title: m.name }, avatar(m.name, m.kind)))),
       h('span', { class: 'spacer' }),
-      p.total_seconds > 0 && h('span', { title: 'Затрачено времени' }, '⏱ ' + fmtDuration(p.total_seconds)),
-      p.cost_usd > 0 && h('span', { title: 'Стоимость по прайсу API' }, fmtMoney(p.cost_usd)),
+      p.total_seconds > 0 && h('span', { title: i18n.t('Затрачено времени') }, '⏱ ' + fmtDuration(p.total_seconds)),
+      p.cost_usd > 0 && h('span', { title: i18n.t('Стоимость по прайсу API') }, fmtMoney(p.cost_usd)),
     ),
   );
 }
 
 function projectDialog(p, done) {
-  dialog(p ? 'Проект' : 'Новый проект', (form, { close, err }) => {
+  dialog(p ? i18n.t('Проект') : i18n.t('Новый проект'), (form, { close, err }) => {
     const name = h('input', { required: true, maxlength: 100, value: p?.name ?? '', autofocus: !p });
-    const description = h('textarea', { placeholder: 'О чём проект. Markdown.' });
+    const description = h('textarea', { placeholder: i18n.t('О чём проект. Markdown.') });
     description.value = p?.description ?? '';
     const color = h('input', { type: 'color', value: p?.color ?? '#2a78d6', style: 'padding:2px;height:36px;width:64px' });
     const logo = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp' });
-    form.append(
-      h('label', { class: 'field' }, 'Название', name),
-      h('label', { class: 'field' }, 'Описание', description),
-      h('div', { class: 'grid-2' }, h('label', { class: 'field' }, 'Логотип (PNG, JPEG, WebP до 5 МБ)', logo), h('label', { class: 'field' }, 'Цвет', color)),
-      h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { type: 'button', class: 'ghost', onclick: close }, 'Отмена'), h('button', { class: 'primary' }, p ? 'Сохранить' : 'Создать')),
+    appendChildren(form,
+      h('label', { class: 'field' }, i18n.t('Название'), name),
+      h('label', { class: 'field' }, i18n.t('Описание'), description),
+      h('div', { class: 'grid-2' }, h('label', { class: 'field' }, i18n.t('Логотип (PNG, JPEG, WebP до 5 МБ)'), logo), h('label', { class: 'field' }, i18n.t('Цвет'), color)),
+      h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { type: 'button', class: 'ghost', onclick: close }, i18n.t('Отмена')), h('button', { class: 'primary' }, p ? i18n.t('Сохранить') : i18n.t('Создать'))),
     );
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1377,7 +1383,7 @@ function projectDialog(p, done) {
         const saved = p ? await api('PATCH', `/projects/${p.id}`, body) : await api('POST', '/projects', body);
         if (logo.files[0]) {
           const res = await fetch(`/api/projects/${saved.id}/logo`, { method: 'PUT', headers: { 'Content-Type': logo.files[0].type }, body: logo.files[0] });
-          if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Не удалось загрузить логотип');
+          if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? i18n.t('Не удалось загрузить логотип'));
         }
         close();
         done(saved);
@@ -1393,18 +1399,18 @@ async function projectsView() {
   const loose = await api('GET', '/tasks?limit=500&status=').then((all) => all.filter((t) => !t.project).length, () => 0);
   return shell(
     'projects',
-    h('div', { class: 'page-head' }, h('h1', null, 'Проекты'), h('span', { class: 'spacer' }), h('button', { class: 'primary', onclick: () => projectDialog(null, (p) => (location.hash = `#/projects/${encodeURIComponent(p.name)}`)) }, 'Новый проект')),
+    h('div', { class: 'page-head' }, h('h1', null, i18n.t('Проекты')), h('span', { class: 'spacer' }), h('button', { class: 'primary', onclick: () => projectDialog(null, (p) => (location.hash = `#/projects/${encodeURIComponent(p.name)}`)) }, i18n.t('Новый проект'))),
     projects.length
       ? h('div', { class: 'project-grid' }, projects.map(projectCard))
-      : h('div', { class: 'card empty' }, 'Проектов пока нет'),
-    loose > 0 && h('p', { class: 'muted small' }, h('a', { href: '#/tasks' }, `Задач без проекта: ${loose}`)),
+      : h('div', { class: 'card empty' }, i18n.t('Проектов пока нет')),
+    loose > 0 && h('p', { class: 'muted small' }, h('a', { href: '#/tasks' }, i18n.t`Задач без проекта: ${loose}`)),
   );
 }
 
 async function projectView(name) {
   const projects = await api('GET', '/projects?details=1');
   const p = projects.find((x) => x.name.toLowerCase() === name.toLowerCase());
-  if (!p) return shell('projects', h('div', { class: 'empty' }, `Проекта «${name}» нет`), h('p', { style: 'text-align:center' }, h('a', { href: '#/projects' }, '← Все проекты')));
+  if (!p) return shell('projects', h('div', { class: 'empty' }, i18n.t`Проекта «${name}» нет`), h('p', { style: 'text-align:center' }, h('a', { href: '#/projects' }, i18n.t('← Все проекты'))));
   document.title = `${p.name} · AI Guild`;
 
   const list = h('div', { class: 'card task-list' });
@@ -1412,7 +1418,7 @@ async function projectView(name) {
   const load = async () => {
     const qs = new URLSearchParams({ project: p.name, limit: '500', ...(only && { status: only }) });
     const tasks = await api('GET', `/tasks?${qs}`);
-    list.replaceChildren(...(tasks.length ? treeRows(tasks) : [h('div', { class: 'empty' }, only === 'open' ? 'Открытых задач нет' : 'Задач нет')]));
+    list.replaceChildren(...(tasks.length ? treeRows(tasks) : [h('div', { class: 'empty' }, only === 'open' ? i18n.t('Открытых задач нет') : i18n.t('Задач нет'))]));
   };
   await load();
   state.poll = load;
@@ -1421,15 +1427,15 @@ async function projectView(name) {
   const st = p.tasks_by_status;
   const filter = h(
     'select',
-    { 'aria-label': 'Статус', onchange: (e) => { only = e.target.value; load(); } },
-    h('option', { value: 'open' }, 'Открытые'),
-    h('option', { value: '' }, 'Все'),
+    { 'aria-label': i18n.t('Статус'), onchange: (e) => { only = e.target.value; load(); } },
+    h('option', { value: 'open' }, i18n.t('Открытые')),
+    h('option', { value: '' }, i18n.t('Все')),
     Object.entries(STATUS).map(([v, l]) => h('option', { value: v }, l)),
   );
 
   return shell(
     'projects',
-    h('div', { class: 'small', style: 'margin-bottom:10px' }, h('a', { href: '#/projects' }, '← Все проекты')),
+    h('div', { class: 'small', style: 'margin-bottom:10px' }, h('a', { href: '#/projects' }, i18n.t('← Все проекты'))),
     h(
       'section',
       { class: 'card project-hero', style: p.color ? `--project:${p.color}` : '' },
@@ -1437,21 +1443,21 @@ async function projectView(name) {
       h(
         'div',
         { style: 'min-width:0;flex:1' },
-        h('div', { class: 'row' }, h('h1', null, p.name), h('span', { class: 'spacer' }), h('a', { class: 'button', href: `#/board/${encodeURIComponent(p.name)}` }, 'Доска'), h('a', { class: 'button', href: `#/timeline/${encodeURIComponent(p.name)}` }, 'График'), h('button', { onclick: () => projectDialog(p, (saved) => (saved.name === p.name ? render() : (location.hash = `#/projects/${encodeURIComponent(saved.name)}`))) }, 'Изменить')),
-        p.description ? markdown(p.description) : h('p', { class: 'muted' }, 'Без описания'),
-        h('div', { class: 'row', style: 'margin-top:10px' }, p.members.map((m) => h('span', { class: 'chip' }, avatar(m.name, m.kind), m.name)), p.models.map((m) => h('span', { class: 'chip mono', title: 'Модель' }, m))),
+        h('div', { class: 'row' }, h('h1', null, p.name), h('span', { class: 'spacer' }), h('a', { class: 'button', href: `#/board/${encodeURIComponent(p.name)}` }, i18n.t('Доска')), h('a', { class: 'button', href: `#/timeline/${encodeURIComponent(p.name)}` }, i18n.t('График')), h('button', { onclick: () => projectDialog(p, (saved) => (saved.name === p.name ? render() : (location.hash = `#/projects/${encodeURIComponent(saved.name)}`))) }, i18n.t('Изменить'))),
+        p.description ? markdown(p.description) : h('p', { class: 'muted' }, i18n.t('Без описания')),
+        h('div', { class: 'row', style: 'margin-top:10px' }, p.members.map((m) => h('span', { class: 'chip' }, avatar(m.name, m.kind), m.name)), p.models.map((m) => h('span', { class: 'chip mono', title: i18n.t('Модель') }, m))),
       ),
     ),
     h(
       'div',
       { class: 'tiles', style: 'margin-top:16px' },
-      tile('Задачи', String(p.tasks), `${p.open_tasks} открыто · ${st.done ?? 0} готово`),
-      tile('На проверке', String(st.review ?? 0), (st.blocked ?? 0) > 0 ? `${st.blocked} заблокировано` : 'ждут вашего решения'),
-      tile('Время', fmtDuration(p.total_seconds)),
-      tile('Стоимость', fmtMoney(p.cost_usd), 'по прайсу API'),
+      tile(i18n.t('Задачи'), String(p.tasks), i18n.t`${p.open_tasks} открыто · ${st.done ?? 0} готово`),
+      tile(i18n.t('На проверке'), String(st.review ?? 0), (st.blocked ?? 0) > 0 ? i18n.t`${st.blocked} заблокировано` : i18n.t('ждут вашего решения')),
+      tile(i18n.t('Время'), fmtDuration(p.total_seconds)),
+      tile(i18n.t('Стоимость'), fmtMoney(p.cost_usd), i18n.t('по прайсу API')),
     ),
     h('div', { class: 'card pad', style: 'margin-bottom:16px' }, statusBar(p)),
-    h('div', { class: 'page-head' }, h('h2', null, 'Задачи'), filter, h('span', { class: 'spacer' }), h('button', { class: 'primary', onclick: async () => newTaskDialog(await api('GET', '/projects').catch(() => []), { project: p.name }) }, 'Новая задача')),
+    h('div', { class: 'page-head' }, h('h2', null, i18n.t('Задачи')), filter, h('span', { class: 'spacer' }), h('button', { class: 'primary', onclick: async () => newTaskDialog(await api('GET', '/projects').catch(() => []), { project: p.name }) }, i18n.t('Новая задача'))),
     list,
   );
 }
@@ -1467,7 +1473,7 @@ async function inboxView() {
     h(
       'div',
       { class: 'page-head' },
-      h('h1', null, 'Входящие'),
+      h('h1', null, i18n.t('Входящие')),
       h('span', { class: 'spacer' }),
       events.length > 0 &&
         h(
@@ -1479,10 +1485,10 @@ async function inboxView() {
               render();
             },
           },
-          'Отметить всё прочитанным',
+          i18n.t('Отметить всё прочитанным'),
         ),
     ),
-    h('p', { class: 'muted', style: 'margin-top:-8px' }, 'Что агенты сделали по вашим задачам. Событие уходит отсюда, когда вы открываете задачу или нажимаете «Прочитано». У каждого агента такой же ящик — в него попадают ваши комментарии.'),
+    h('p', { class: 'muted', style: 'margin-top:-8px' }, i18n.t('Что агенты сделали по вашим задачам. Событие уходит отсюда, когда вы открываете задачу или нажимаете «Прочитано». У каждого агента такой же ящик — в него попадают ваши комментарии.')),
     h(
       'div',
       { class: 'card task-list' },
@@ -1502,7 +1508,7 @@ async function inboxView() {
                     { class: 'row', style: 'gap:6px' },
                     avatar(e.actor_name, e.actor_kind),
                     h('strong', null, e.actor_name),
-                    e.type === 'comment_added' ? 'прокомментировал(а)' : (EVENT_TEXT[e.type] ?? (() => e.type))(e.data),
+                    e.type === 'comment_added' ? i18n.t('прокомментировал(а)') : (EVENT_TEXT[e.type] ?? (() => e.type))(e.data),
                     runChips(e.data.model, e.data.effort),
                   ),
                   h('div', { class: 'task-title muted' }, `#${e.task_id} ${e.task_title}`),
@@ -1516,20 +1522,20 @@ async function inboxView() {
                     'button',
                     {
                       class: 'small',
-                      title: 'Убрать из входящих всё по этой задаче',
-                      'aria-label': `Отметить прочитанным: задача ${e.task_id}`,
+                      title: i18n.t('Убрать из входящих всё по этой задаче'),
+                      'aria-label': i18n.t`Отметить прочитанным: задача ${e.task_id}`,
                       onclick: async (click) => {
                         click.preventDefault();
                         await api('POST', '/inbox/read', { task_id: e.task_id });
                         render();
                       },
                     },
-                    'Прочитано',
+                    i18n.t('Прочитано'),
                   ),
                 ),
               ),
             )
-        : h('div', { class: 'empty' }, 'Новых событий нет'),
+        : h('div', { class: 'empty' }, i18n.t('Новых событий нет')),
     ),
   );
 }
@@ -1538,10 +1544,10 @@ async function inboxView() {
 
 const an = { range: '30', group: 'model', measure: 'seconds', project: '' };
 const MEASURES = {
-  seconds: { label: 'Время', fmt: fmtDuration },
-  cost_usd: { label: 'Стоимость', fmt: fmtMoney },
-  tokens: { label: 'Токены', fmt: fmtCompact },
-  tasks: { label: 'Задачи', fmt: (n) => String(n) },
+  seconds: { label: i18n.t('Время'), fmt: fmtDuration },
+  cost_usd: { label: i18n.t('Стоимость'), fmt: fmtMoney },
+  tokens: { label: i18n.t('Токены'), fmt: fmtCompact },
+  tasks: { label: i18n.t('Задачи'), fmt: (n) => String(n) },
 };
 const measureOf = (row) => (an.measure === 'tokens' ? row.input_tokens + row.output_tokens : row[an.measure]);
 const autoReviewEstimate = (row) =>
@@ -1559,11 +1565,11 @@ function rowTip(title, r) {
   return [
     title,
     [
-      `Время: ${fmtDuration(r.seconds)}`,
-      `Задач: ${r.tasks} · записей: ${r.entries}`,
-      `Токены: ${fmtCompact(r.input_tokens)} in / ${fmtCompact(r.output_tokens)} out`,
-      `Кэш: ${fmtCompact(r.cache_read_tokens)} чтение / ${fmtCompact(r.cache_write_tokens)} запись`,
-      `Стоимость: ${analyticsCost(r)}`,
+      i18n.t`Время: ${fmtDuration(r.seconds)}`,
+      i18n.t`Задач: ${r.tasks} · записей: ${r.entries}`,
+      i18n.t`Токены: ${fmtCompact(r.input_tokens)} in / ${fmtCompact(r.output_tokens)} out`,
+      i18n.t`Кэш: ${fmtCompact(r.cache_read_tokens)} чтение / ${fmtCompact(r.cache_write_tokens)} запись`,
+      i18n.t`Стоимость: ${analyticsCost(r)}`,
     ].join('\n'),
   ];
 }
@@ -1571,12 +1577,12 @@ function rowTip(title, r) {
 function barChart(rows) {
   const top = rows.slice().sort((a, b) => measureOf(b) - measureOf(a)).slice(0, 12);
   const max = Math.max(...top.map(measureOf), 0);
-  if (!max) return h('div', { class: 'empty' }, 'Нет данных за период');
+  if (!max) return h('div', { class: 'empty' }, i18n.t('Нет данных за период'));
   return h(
     'div',
     { class: 'bars' },
     top.map((r) => {
-      const name = r.keys[0] ?? '— не указано';
+      const name = r.keys[0] ?? i18n.t('— не указано');
       return [
         h('div', { class: 'bar-label', title: name }, name),
         withTip(
@@ -1602,12 +1608,12 @@ function dayChart(rows, from, to) {
   }
   const empty = { seconds: 0, tasks: 0, entries: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 };
   const max = Math.max(...days.map((d) => measureOf(byDay.get(d) ?? empty)), 0);
-  if (!max) return h('div', { class: 'empty' }, 'Нет данных за период');
-  const label = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  if (!max) return h('div', { class: 'empty' }, i18n.t('Нет данных за период'));
+  const label = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString(i18n.dateLocale, { day: 'numeric', month: 'short', timeZone: 'UTC' });
   return h(
     'div',
     null,
-    h('div', { class: 'muted small', style: 'margin-bottom:4px' }, `макс. ${MEASURES[an.measure].fmt(max)}`),
+    h('div', { class: 'muted small', style: 'margin-bottom:4px' }, i18n.t`макс. ${MEASURES[an.measure].fmt(max)}`),
     h(
       'div',
       { class: 'cols' },
@@ -1633,7 +1639,7 @@ function statsTable(rows, groupLabel) {
       h(
         'thead',
         null,
-        h('tr', null, h('th', null, groupLabel), ['Время', 'Задач', 'Записей', 'Токены in', 'Токены out', 'Кэш: чтение', 'Кэш: запись', 'Стоимость', '$/час'].map((c) => h('th', { class: 'num' }, c))),
+        h('tr', null, h('th', null, groupLabel), [i18n.t('Время'), i18n.t('Задач'), i18n.t('Записей'), i18n.t('Токены in'), i18n.t('Токены out'), i18n.t('Кэш: чтение'), i18n.t('Кэш: запись'), i18n.t('Стоимость'), i18n.t('$/час')].map((c) => h('th', { class: 'num' }, c))),
       ),
       h(
         'tbody',
@@ -1657,7 +1663,7 @@ function statsTable(rows, groupLabel) {
       ),
     ),
       rows.some((r) => autoReviewEstimate(r) > 0 && (r.unpriced_entries || r.cost_usd === 0)) &&
-        h('p', { class: 'muted small', style: 'padding:0 16px 12px' }, '* Оценка по тарифу GPT-5.6 Luna. Фактическая модель и тариф codex-auto-review не опубликованы; оценка не включена в итоговую стоимость.'),
+        h('p', { class: 'muted small', style: 'padding:0 16px 12px' }, i18n.t('* Оценка по тарифу GPT-5.6 Luna. Фактическая модель и тариф codex-auto-review не опубликованы; оценка не включена в итоговую стоимость.')),
   );
 }
 
@@ -1694,22 +1700,22 @@ async function analyticsView() {
 
   return shell(
     'analytics',
-    h('div', { class: 'page-head' }, h('h1', null, 'Аналитика')),
+    h('div', { class: 'page-head' }, h('h1', null, i18n.t('Аналитика'))),
     h(
       'div',
       { class: 'filters' },
-      seg('range', [['7', '7 дней'], ['30', '30 дней'], ['90', '90 дней'], ['all', 'Всё время']]),
-      h('select', { 'aria-label': 'Проект', onchange: set('project') }, h('option', { value: '' }, 'Все проекты'), projects.map((p) => h('option', { value: p, selected: p === an.project }, p))),
+      seg('range', [['7', i18n.t('7 дней')], ['30', i18n.t('30 дней')], ['90', i18n.t('90 дней')], ['all', i18n.t('Всё время')]]),
+      h('select', { 'aria-label': i18n.t('Проект'), onchange: set('project') }, h('option', { value: '' }, i18n.t('Все проекты')), projects.map((p) => h('option', { value: p, selected: p === an.project }, p))),
       h('span', { class: 'spacer' }),
       seg('measure', Object.entries(MEASURES).map(([v, m]) => [v, m.label])),
     ),
     h(
       'div',
       { class: 'tiles' },
-      tile('Время работы', fmtDuration(t.seconds), `${t.entries} записей по ${t.tasks} задачам`),
-      tile('Стоимость', fmtMoney(t.cost_usd), t.unpriced_entries ? `${t.unpriced_entries} записей без подтверждённой цены` : t.seconds ? `${fmtMoney(t.cost_usd / (t.seconds / 3600))} за час` : null),
-      tile('Токены', fmtCompact(t.input_tokens + t.output_tokens), `${fmtCompact(t.input_tokens)} in · ${fmtCompact(t.output_tokens)} out · кэш ${fmtCompact(t.cache_read_tokens)}`),
-      tile('Задачи', `${st.done ?? 0} готово`, `${open} открыто · ${st.review ?? 0} на проверке`),
+      tile(i18n.t('Время работы'), fmtDuration(t.seconds), i18n.t`${t.entries} записей по ${t.tasks} задачам`),
+      tile(i18n.t('Стоимость'), fmtMoney(t.cost_usd), t.unpriced_entries ? i18n.t`${t.unpriced_entries} записей без подтверждённой цены` : t.seconds ? i18n.t`${fmtMoney(t.cost_usd / (t.seconds / 3600))} за час` : null),
+      tile(i18n.t('Токены'), fmtCompact(t.input_tokens + t.output_tokens), i18n.t`${fmtCompact(t.input_tokens)} in · ${fmtCompact(t.output_tokens)} out · кэш ${fmtCompact(t.cache_read_tokens)}`),
+      tile(i18n.t('Задачи'), i18n.t`${st.done ?? 0} готово`, i18n.t`${open} открыто · ${st.review ?? 0} на проверке`),
     ),
     h(
       'div',
@@ -1721,28 +1727,28 @@ async function analyticsView() {
           'div',
           { class: 'chart-head' },
           h('h2', null, `${MEASURES[an.measure].label}: ${GROUPS[an.group].toLowerCase()}`),
-          h('select', { 'aria-label': 'Группировка', onchange: set('group') }, Object.entries(GROUPS).map(([v, l]) => h('option', { value: v, selected: v === an.group }, l))),
+          h('select', { 'aria-label': i18n.t('Группировка'), onchange: set('group') }, Object.entries(GROUPS).map(([v, l]) => h('option', { value: v, selected: v === an.group }, l))),
         ),
         barChart(grouped.rows),
       ),
-      h('section', { class: 'card pad' }, h('div', { class: 'chart-head' }, h('h2', null, `${MEASURES[an.measure].label} по дням`), h('span', { class: 'muted small' }, 'UTC')), dayChart(daily.rows, from, to)),
+      h('section', { class: 'card pad' }, h('div', { class: 'chart-head' }, h('h2', null, i18n.t`${MEASURES[an.measure].label} по дням`), h('span', { class: 'muted small' }, 'UTC')), dayChart(daily.rows, from, to)),
     ),
-    h('section', { class: 'card', style: 'margin-top:16px' }, h('div', { class: 'pad', style: 'padding-bottom:4px' }, h('h2', null, 'Модель × effort')), matrix.rows.length ? statsTable(matrix.rows, 'Модель · effort') : h('div', { class: 'empty' }, 'Нет данных за период')),
+    h('section', { class: 'card', style: 'margin-top:16px' }, h('div', { class: 'pad', style: 'padding-bottom:4px' }, h('h2', null, i18n.t('Модель × effort'))), matrix.rows.length ? statsTable(matrix.rows, i18n.t('Модель · effort')) : h('div', { class: 'empty' }, i18n.t('Нет данных за период'))),
   );
 }
 
 // ---------- accounts ----------
 
 function showKey(name, key) {
-  dialog(`Ключ для ${name}`, (form, { close }) => {
-    form.append(
-      h('p', { style: 'margin:0' }, 'Ключ показывается один раз. Сохраните его сейчас — восстановить нельзя, только выпустить новый.'),
+  dialog(i18n.t`Ключ для ${name}`, (form, { close }) => {
+    appendChildren(form,
+      h('p', { style: 'margin:0' }, i18n.t('Ключ показывается один раз. Сохраните его сейчас — восстановить нельзя, только выпустить новый.')),
       h('div', { class: 'keybox' }, key),
       h(
         'div',
         { class: 'row', style: 'justify-content:flex-end' },
-        h('button', { type: 'button', onclick: (e) => navigator.clipboard.writeText(key).then(() => (e.target.textContent = 'Скопировано')) }, 'Скопировать'),
-        h('button', { type: 'button', class: 'primary', onclick: close }, 'Готово'),
+        h('button', { type: 'button', onclick: (e) => navigator.clipboard.writeText(key).then(() => (e.target.textContent = i18n.t('Скопировано'))) }, i18n.t('Скопировать')),
+        h('button', { type: 'button', class: 'primary', onclick: close }, i18n.t('Готово')),
       ),
     );
   });
@@ -1760,16 +1766,16 @@ async function accountsView() {
     }
   };
   const create = () =>
-    dialog('Новый аккаунт', (form, { close, err }) => {
+    dialog(i18n.t('Новый аккаунт'), (form, { close, err }) => {
       const name = h('input', { required: true, pattern: '[a-zA-Z0-9][a-zA-Z0-9_.\\-]{0,39}', placeholder: 'claude-backend', autofocus: true });
-      const kind = h('select', null, h('option', { value: 'agent' }, 'Агент'), h('option', { value: 'human' }, 'Человек'));
+      const kind = h('select', null, h('option', { value: 'agent' }, i18n.t('Агент')), h('option', { value: 'human' }, i18n.t('Человек')));
       const system = h('input', { placeholder: 'claude, codex…', list: 'systems' });
-      const role = h('select', null, h('option', { value: 'member' }, 'Участник'), h('option', { value: 'admin' }, 'Администратор'));
-      form.append(
-        h('label', { class: 'field' }, 'Имя (латиница, для @упоминаний)', name),
-        h('div', { class: 'grid-2' }, h('label', { class: 'field' }, 'Тип', kind), h('label', { class: 'field' }, 'Роль', role)),
-        h('label', { class: 'field' }, 'Система', system, h('datalist', { id: 'systems' }, ['claude', 'codex'].map((s) => h('option', { value: s })))),
-        h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { type: 'button', class: 'ghost', onclick: close }, 'Отмена'), h('button', { class: 'primary' }, 'Создать')),
+      const role = h('select', null, h('option', { value: 'member' }, i18n.t('Участник')), h('option', { value: 'admin' }, i18n.t('Администратор')));
+      appendChildren(form,
+        h('label', { class: 'field' }, i18n.t('Имя (латиница, для @упоминаний)'), name),
+        h('div', { class: 'grid-2' }, h('label', { class: 'field' }, i18n.t('Тип'), kind), h('label', { class: 'field' }, i18n.t('Роль'), role)),
+        h('label', { class: 'field' }, i18n.t('Система'), system, h('datalist', { id: 'systems' }, ['claude', 'codex'].map((s) => h('option', { value: s })))),
+        h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { type: 'button', class: 'ghost', onclick: close }, i18n.t('Отмена')), h('button', { class: 'primary' }, i18n.t('Создать'))),
       );
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -1779,7 +1785,7 @@ async function accountsView() {
           await render();
           if (res.account.kind === 'human') {
             try { showInvitation(res.account.name, await api('POST', `/accounts/${res.account.id}/invitation`)); }
-            catch (error) { alert(`Аккаунт создан. Приглашение можно выдать в списке аккаунтов. ${error.message}`); }
+            catch (error) { alert(i18n.t`Аккаунт создан. Приглашение можно выдать в списке аккаунтов. ${error.message}`); }
           } else showKey(res.account.name, res.key);
         } catch (ex) {
           err.textContent = ex.message;
@@ -1789,14 +1795,14 @@ async function accountsView() {
 
   return shell(
     'accounts',
-    h('div', { class: 'page-head' }, h('h1', null, 'Аккаунты'), h('span', { class: 'spacer' }), admin && h('button', { class: 'primary', onclick: create }, 'Новый аккаунт')),
+    h('div', { class: 'page-head' }, h('h1', null, i18n.t('Аккаунты')), h('span', { class: 'spacer' }), admin && h('button', { class: 'primary', onclick: create }, i18n.t('Новый аккаунт'))),
     h(
       'div',
       { class: 'card table-wrap' },
       h(
         'table',
         null,
-        h('thead', null, h('tr', null, ['Имя', 'Тип', 'Система', 'Роль', 'Ключ', 'Активность', ''].map((c) => h('th', null, c)))),
+        h('thead', null, h('tr', null, [i18n.t('Имя'), i18n.t('Тип'), i18n.t('Система'), i18n.t('Роль'), i18n.t('Ключ'), i18n.t('Активность'), ''].map((c) => h('th', null, c)))),
         h(
           'tbody',
           null,
@@ -1805,34 +1811,34 @@ async function accountsView() {
               'tr',
               { style: a.disabled ? 'opacity:.5' : '' },
               h('td', null, h('span', { class: 'row', style: 'flex-wrap:nowrap' }, avatar(a.name, a.kind), a.name)),
-              h('td', null, a.kind === 'agent' ? 'Агент' : 'Человек'),
+              h('td', null, a.kind === 'agent' ? i18n.t('Агент') : i18n.t('Человек')),
               h('td', null, a.system ?? '—'),
-              h('td', null, a.role === 'admin' ? 'Администратор' : 'Участник'),
+              h('td', null, a.role === 'admin' ? i18n.t('Администратор') : i18n.t('Участник')),
               h('td', null, h('code', null, a.key_prefix + '…')),
-              h('td', null, a.disabled ? 'отключён' : a.last_seen_at ? time(a.last_seen_at) : h('span', { class: 'muted small' }, 'не заходил')),
+              h('td', null, a.disabled ? i18n.t('отключён') : a.last_seen_at ? time(a.last_seen_at) : h('span', { class: 'muted small' }, i18n.t('не заходил'))),
               h(
                 'td',
                 null,
                 admin && a.kind === 'human' && !a.disabled && h('button', { class: 'ghost',
-                  onclick: () => act(async () => showInvitation(a.name, await api('POST', `/accounts/${a.id}/invitation`))) }, 'Пригласить'),
+                  onclick: () => act(async () => showInvitation(a.name, await api('POST', `/accounts/${a.id}/invitation`))) }, i18n.t('Пригласить')),
                 (admin || a.id === state.me.id) &&
                   h(
                     'button',
                     {
                       class: 'ghost',
                       onclick: () =>
-                        confirm(`Выпустить новый ключ для ${a.name}? Старый перестанет работать.`) &&
+                        confirm(i18n.t`Выпустить новый ключ для ${a.name}? Старый перестанет работать.`) &&
                         act(async () => {
                           const res = await api('POST', `/accounts/${a.id}/rotate-key`);
                           if (a.id === state.me.id) await api('POST', '/session', { key: res.key });
                           showKey(a.name, res.key);
                         }),
                     },
-                    'Новый ключ',
+                    i18n.t('Новый ключ'),
                   ),
                 admin &&
                   a.id !== state.me.id &&
-                  h('button', { class: 'ghost', onclick: () => act(() => api('PATCH', `/accounts/${a.id}`, { disabled: !a.disabled })) }, a.disabled ? 'Включить' : 'Отключить'),
+                  h('button', { class: 'ghost', onclick: () => act(() => api('PATCH', `/accounts/${a.id}`, { disabled: !a.disabled })) }, a.disabled ? i18n.t('Включить') : i18n.t('Отключить')),
               ),
             ),
           ),
@@ -1843,15 +1849,15 @@ async function accountsView() {
 }
 
 function showInvitation(name, invitation) {
-  dialog(`Приглашение для ${name}`, (form, { close }) => {
-    const input = h('input', { value: invitation.url, readonly: true, 'aria-label': 'Ссылка-приглашение' });
-    form.append(h('p', { class: 'muted', style: 'margin:0' }, 'Передайте эту ссылку человеку: он привяжет Google или Telegram и войдёт в выданный аккаунт.'),
-      input, h('p', { class: 'muted small' }, `Одноразовая ссылка действует до ${fmtDate(invitation.expires_at)}. Новая ссылка заменяет предыдущую.`),
+  dialog(i18n.t`Приглашение для ${name}`, (form, { close }) => {
+    const input = h('input', { value: invitation.url, readonly: true, 'aria-label': i18n.t('Ссылка-приглашение') });
+    appendChildren(form, h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Передайте эту ссылку человеку: он привяжет Google или Telegram и войдёт в выданный аккаунт.')),
+      input, h('p', { class: 'muted small' }, i18n.t`Одноразовая ссылка действует до ${fmtDate(invitation.expires_at)}. Новая ссылка заменяет предыдущую.`),
       h('div', { class: 'row', style: 'justify-content:flex-end' },
         h('button', { type: 'button', onclick: async (e) => {
-          try { await navigator.clipboard.writeText(invitation.url); e.target.textContent = 'Скопировано'; }
+          try { await navigator.clipboard.writeText(invitation.url); e.target.textContent = i18n.t('Скопировано'); }
           catch { input.select(); }
-        } }, 'Скопировать ссылку'), h('button', { type: 'button', class: 'primary', onclick: close }, 'Готово')));
+        } }, i18n.t('Скопировать ссылку')), h('button', { type: 'button', class: 'primary', onclick: close }, i18n.t('Готово'))));
   });
 }
 
@@ -1863,22 +1869,22 @@ function connectView() {
     h('section', { class: 'card pad stack' }, h('h2', null, title), note && h('p', { class: 'muted', style: 'margin:0' }, note), h('div', { class: 'md' }, h('pre', null, h('code', null, text))));
   return shell(
     'connect',
-    h('div', { class: 'page-head' }, h('h1', null, 'Подключение агентов')),
+    h('div', { class: 'page-head' }, h('h1', null, i18n.t('Подключение агентов'))),
     h(
       'div',
       { class: 'stack' },
-      h('p', { class: 'muted', style: 'margin:0' }, 'Заведите каждому агенту свой аккаунт на странице «Аккаунты» и подставьте его ключ вместо <KEY>.'),
+      h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Заведите каждому агенту свой аккаунт на странице «Аккаунты» и подставьте его ключ вместо <KEY>.')),
       block('Claude Code', `claude mcp add --transport http ai-tracker ${origin}/mcp \\\n  --header "Authorization: Bearer <KEY>"`),
       block(
         'Codex',
         `# ~/.codex/config.toml\n[mcp_servers.ai-tracker]\nurl = "${origin}/mcp"\ndefault_tools_approval_mode = "approve"\nhttp_headers = { Authorization = "Bearer <KEY>" }`,
       ),
       block(
-        'Инструкция агенту (CLAUDE.md / AGENTS.md)',
-        `## AI Guild\n- В начале сессии вызови get_inbox: там комментарии человека и других агентов. Выполни то, что просят, затем ack_inbox.\n- Перед работой найди или создай задачу и вызови start_timer.\n- Ход работы, вопросы и обсуждение — через add_comment; логи — attach_text; скриншоты и видео — через get_upload_command.\n- По завершении: stop_timer (с токенами и стоимостью), затем submit_result.\n- Всегда указывай свои настоящие model и effort.`,
-        'Чтобы агент сам читал ваши комментарии и доделывал задачи.',
+        i18n.t('Инструкция агенту (CLAUDE.md / AGENTS.md)'),
+        i18n.t(`## AI Guild\n- В начале сессии вызови get_inbox: там комментарии человека и других агентов. Выполни то, что просят, затем ack_inbox.\n- Перед работой найди или создай задачу и вызови start_timer.\n- Ход работы, вопросы и обсуждение — через add_comment; логи — attach_text; скриншоты и видео — через get_upload_command.\n- По завершении: stop_timer (с токенами и стоимостью), затем submit_result.\n- Всегда указывай свои настоящие model и effort.`),
+        i18n.t('Чтобы агент сам читал ваши комментарии и доделывал задачи.'),
       ),
-      block('REST', `curl -H "Authorization: Bearer <KEY>" ${origin}/api/tasks\n\n# загрузка файла\ncurl -H "Authorization: Bearer <KEY>" -F "file=@screen.png" ${origin}/api/tasks/1/attachments\n\n# контракт\n${origin}/api/openapi.json`),
+      block('REST', i18n.t`curl -H "Authorization: Bearer <KEY>" ${origin}/api/tasks\n\n# загрузка файла\ncurl -H "Authorization: Bearer <KEY>" -F "file=@screen.png" ${origin}/api/tasks/1/attachments\n\n# контракт\n${origin}/api/openapi.json`),
     ),
   );
 }
@@ -1907,7 +1913,7 @@ async function profileView() {
 
   return shell(
     'profile',
-    h('div', { class: 'page-head' }, h('h1', null, 'Профиль'), h('span', { class: 'spacer' }), h('button', { onclick: logout }, 'Выйти')),
+    h('div', { class: 'page-head' }, h('h1', null, i18n.t('Профиль')), h('span', { class: 'spacer' }), h('button', { onclick: logout }, i18n.t('Выйти'))),
     h(
       'div',
       { class: 'stack' },
@@ -1915,40 +1921,40 @@ async function profileView() {
       h(
         'section',
         { class: 'card pad stack' },
-        h('div', { class: 'row' }, avatar(state.me.name, state.me.kind), h('strong', null, state.me.name), h('span', { class: 'chip' }, state.me.role === 'admin' ? 'Администратор' : 'Участник'), h('span', { class: 'chip mono' }, state.me.key_prefix + '…')),
+        h('div', { class: 'row' }, avatar(state.me.name, state.me.kind), h('strong', null, state.me.name), h('span', { class: 'chip' }, state.me.role === 'admin' ? i18n.t('Администратор') : i18n.t('Участник')), h('span', { class: 'chip mono' }, state.me.key_prefix + '…')),
       ),
       h(
         'nav',
         { class: 'card task-list mobile-only' },
-        h('a', { class: 'task-row', href: '#/tasks', style: 'grid-template-columns:1fr' }, 'Все задачи списком'),
-        h('a', { class: 'task-row', href: '#/timeline', style: 'grid-template-columns:1fr' }, 'График работ'),
-        h('a', { class: 'task-row', href: '#/analytics', style: 'grid-template-columns:1fr' }, 'Аналитика'),
-        h('a', { class: 'task-row', href: '#/accounts', style: 'grid-template-columns:1fr' }, 'Аккаунты и ключи'),
-        h('a', { class: 'task-row', href: '#/connect', style: 'grid-template-columns:1fr' }, 'Подключение агентов'),
+        h('a', { class: 'task-row', href: '#/tasks', style: 'grid-template-columns:1fr' }, i18n.t('Все задачи списком')),
+        h('a', { class: 'task-row', href: '#/timeline', style: 'grid-template-columns:1fr' }, i18n.t('График работ')),
+        h('a', { class: 'task-row', href: '#/analytics', style: 'grid-template-columns:1fr' }, i18n.t('Аналитика')),
+        h('a', { class: 'task-row', href: '#/accounts', style: 'grid-template-columns:1fr' }, i18n.t('Аккаунты и ключи')),
+        h('a', { class: 'task-row', href: '#/connect', style: 'grid-template-columns:1fr' }, i18n.t('Подключение агентов')),
       ),
       state.me.kind === 'human' && h('section', { class: 'card pad stack' },
-        h('h2', null, 'Способы входа'),
-        h('p', { class: 'muted', style: 'margin:0' }, 'Привяжите Google и Telegram, чтобы входить без API-ключа.'),
+        h('h2', null, i18n.t('Способы входа')),
+        h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Привяжите Google и Telegram, чтобы входить без API-ключа.')),
         Object.entries(providerLabels).map(([provider, label]) => {
           const identity = identities.find((i) => i.provider === provider);
           return h('div', { class: 'row' }, h('strong', null, label),
-            h('span', { class: 'muted small' }, identity?.label ?? (state.config?.providers?.[provider] ? 'Не привязан' : 'Не настроен администратором')),
+            h('span', { class: 'muted small' }, identity?.label ?? (state.config?.providers?.[provider] ? i18n.t('Не привязан') : i18n.t('Не настроен администратором'))),
             h('span', { class: 'spacer' }), identity
               ? h('button', { class: 'ghost', onclick: (e) => {
-                if (confirm(`Отключить ${label}? Сессии через него завершатся. Для входа останется другой привязанный способ, passkey или API-ключ.`)) {
+                if (confirm(i18n.t`Отключить ${label}? Сессии через него завершатся. Для входа останется другой привязанный способ, passkey или API-ключ.`)) {
                   run(async () => { await api('DELETE', `/auth/identities/${provider}`); await boot(); })(e);
                 }
-              } }, 'Отключить')
+              } }, i18n.t('Отключить'))
               : h('button', { disabled: !state.config?.providers?.[provider], onclick: run(async () => {
                 const result = await api('POST', `/auth/${provider}/start`, { intent: 'link' });
                 location.assign(result.authorization_url);
-              }) }, 'Привязать'));
+              }) }, i18n.t('Привязать')));
         })),
       h(
         'section',
         { class: 'card pad stack' },
-        h('h2', null, `Вход по ${bio}`),
-        h('p', { class: 'muted', style: 'margin:0' }, 'Passkey хранится на устройстве и синхронизируется через связку ключей. Сервер получает только открытый ключ — украсть с него нечего, а фишинговый сайт passkey не примет.'),
+        h('h2', null, i18n.t`Вход по ${bio}`),
+        h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Passkey хранится на устройстве и синхронизируется через связку ключей. Сервер получает только открытый ключ — украсть с него нечего, а фишинговый сайт passkey не примет.')),
         passkeys.length
           ? h(
               'div',
@@ -1957,37 +1963,37 @@ async function profileView() {
                 h(
                   'div',
                   { class: 'timelog', style: 'align-items:center' },
-                  h('div', null, h('div', null, p.name, ' ', p.backed_up && h('span', { class: 'chip' }, 'синхронизируется')), h('div', { class: 'muted small' }, `Добавлен ${fmtDate(p.created_at)}`, p.last_used_at ? ` · вход ${fmtAgo(p.last_used_at)}` : ' · ещё не использовался')),
-                  h('button', { class: 'ghost', onclick: (e) => confirm(`Удалить passkey «${p.name}»? Войти с ним больше не получится.`) && run(() => api('DELETE', `/passkeys/${p.id}`))(e) }, 'Удалить'),
+                  h('div', null, h('div', null, p.name, ' ', p.backed_up && h('span', { class: 'chip' }, i18n.t('синхронизируется'))), h('div', { class: 'muted small' }, i18n.t`Добавлен ${fmtDate(p.created_at)}`, p.last_used_at ? i18n.t` · вход ${fmtAgo(p.last_used_at)}` : i18n.t(' · ещё не использовался'))),
+                  h('button', { class: 'ghost', onclick: (e) => confirm(i18n.t`Удалить passkey «${p.name}»? Войти с ним больше не получится.`) && run(() => api('DELETE', `/passkeys/${p.id}`))(e) }, i18n.t('Удалить')),
                 ),
               ),
             )
-          : h('div', { class: 'muted small' }, 'Пока ни одного passkey'),
+          : h('div', { class: 'muted small' }, i18n.t('Пока ни одного passkey')),
         blocker
           ? h('div', { class: 'muted small' }, blocker)
-          : h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.passkeyRegister(api, pwa.deviceName())) }, passkeys.length ? 'Добавить ещё один' : `Включить ${bio}`)),
+          : h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.passkeyRegister(api, pwa.deviceName())) }, passkeys.length ? i18n.t('Добавить ещё один') : i18n.t`Включить ${bio}`)),
       ),
       h(
         'section',
         { class: 'card pad stack' },
-        h('h2', null, 'Уведомления'),
-        h('p', { class: 'muted', style: 'margin:0' }, 'Push, когда агент сдал результат, ответил в вашей задаче или упомянул вас.'),
+        h('h2', null, i18n.t('Уведомления')),
+        h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Push, когда агент сдал результат, ответил в вашей задаче или упомянул вас.')),
         pushOn
-          ? h('div', { class: 'row' }, h('span', { class: 'chip st-done' }, h('span', { class: 'dot' }), 'Включены на этом устройстве'), h('button', { onclick: run(() => pwa.disablePush(api)) }, 'Выключить'))
+          ? h('div', { class: 'row' }, h('span', { class: 'chip st-done' }, h('span', { class: 'dot' }), i18n.t('Включены на этом устройстве')), h('button', { onclick: run(() => pwa.disablePush(api)) }, i18n.t('Выключить')))
           : pushBlock
             ? h('div', { class: 'muted small' }, pushBlock)
-            : h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.enablePush(api)) }, 'Включить уведомления')),
+            : h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.enablePush(api)) }, i18n.t('Включить уведомления'))),
       ),
       h(
         'section',
         { class: 'card pad stack' },
-        h('h2', null, 'Приложение'),
+        h('h2', null, i18n.t('Приложение')),
         installed
-          ? h('div', { class: 'row' }, h('span', { class: 'chip st-done' }, h('span', { class: 'dot' }), 'Установлено'))
+          ? h('div', { class: 'row' }, h('span', { class: 'chip st-done' }, h('span', { class: 'dot' }), i18n.t('Установлено')))
           : pwa.canPromptInstall()
-            ? h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.promptInstall()) }, 'Установить приложение'))
-            : h('p', { class: 'muted', style: 'margin:0' }, pwa.isIOS() ? 'В Safari нажмите «Поделиться» → «На экран „Домой“».' : 'В меню браузера выберите «Установить приложение» или «Добавить в Dock».'),
-        h('p', { class: 'muted small', style: 'margin:0' }, 'Работает без сети: последние открытые задачи доступны для чтения, комментарии отправятся при появлении связи.'),
+            ? h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.promptInstall()) }, i18n.t('Установить приложение')))
+            : h('p', { class: 'muted', style: 'margin:0' }, pwa.isIOS() ? i18n.t('В Safari нажмите «Поделиться» → «На экран „Домой“».') : i18n.t('В меню браузера выберите «Установить приложение» или «Добавить в Dock».')),
+        h('p', { class: 'muted small', style: 'margin:0' }, i18n.t('Работает без сети: последние открытые задачи доступны для чтения, комментарии отправятся при появлении связи.')),
       ),
     ),
   );
@@ -2001,14 +2007,14 @@ function offerPasskey() {
   localStorage.setItem('ait-passkey-offered', '1');
   api('GET', '/passkeys').then((list) => {
     if (list.length) return;
-    dialog(`Включить вход по ${pwa.biometryName()}?`, (form, { close, err }) => {
-      form.append(
-        h('p', { style: 'margin:0' }, 'В следующий раз не придётся вводить API-ключ — достаточно взгляда или отпечатка.'),
+    dialog(i18n.t`Включить вход по ${pwa.biometryName()}?`, (form, { close, err }) => {
+      appendChildren(form,
+        h('p', { style: 'margin:0' }, i18n.t('В следующий раз не придётся вводить API-ключ — достаточно взгляда или отпечатка.')),
         h(
           'div',
           { class: 'row', style: 'justify-content:flex-end' },
-          h('button', { type: 'button', class: 'ghost', onclick: close }, 'Не сейчас'),
-          h('button', { class: 'primary' }, 'Включить'),
+          h('button', { type: 'button', class: 'ghost', onclick: close }, i18n.t('Не сейчас')),
+          h('button', { class: 'primary' }, i18n.t('Включить')),
         ),
       );
       form.addEventListener('submit', async (e) => {
@@ -2016,7 +2022,7 @@ function offerPasskey() {
         try {
           await pwa.passkeyRegister(api, pwa.deviceName());
           close();
-          toast('Готово. Теперь можно входить по биометрии');
+          toast(i18n.t('Готово. Теперь можно входить по биометрии'));
         } catch (ex) {
           err.textContent = ex.message;
         }
@@ -2030,11 +2036,11 @@ function offerPasskey() {
 const BOARD_COLUMNS = ['todo', 'in_progress', 'review', 'blocked', 'done'];
 // Who moves a task out of each status; shown under the column name.
 const COLUMN_HINT = {
-  todo: 'ещё никто не взял',
-  in_progress: 'агент работает',
-  review: 'ждут вашего решения',
-  blocked: 'нужна помощь',
-  done: 'принято',
+  todo: i18n.t('ещё никто не взял'),
+  in_progress: i18n.t('агент работает'),
+  review: i18n.t('ждут вашего решения'),
+  blocked: i18n.t('нужна помощь'),
+  done: i18n.t('принято'),
 };
 const DONE_SHOWN = 20;
 const board = { project: '', work: 'work', kind: '', assignee: '', allDone: false };
@@ -2075,26 +2081,26 @@ async function boardView(project) {
         levelChip(t.level),
         kindChip(t.kind),
         !board.project && t.project && h('span', null, t.project),
-        t.child_count > 0 && h('span', { title: 'Готово из вложенных' }, `${t.child_done}/${t.child_count}`),
+        t.child_count > 0 && h('span', { title: i18n.t('Готово из вложенных') }, `${t.child_done}/${t.child_count}`),
         ['high', 'urgent'].includes(t.priority) && h('span', { class: `prio-${t.priority}` }, PRIORITY[t.priority]),
       ),
       h(
         'div',
         { class: 'board-foot' },
-        t.assignee_name ? h('span', { class: 'row', style: 'gap:4px;flex-wrap:nowrap' }, avatar(t.assignee_name), t.assignee_name) : h('span', { class: 'muted' }, 'не назначен'),
+        t.assignee_name ? h('span', { class: 'row', style: 'gap:4px;flex-wrap:nowrap' }, avatar(t.assignee_name), t.assignee_name) : h('span', { class: 'muted' }, i18n.t('не назначен')),
         h('span', { class: 'spacer' }),
-        t.total_seconds > 0 && h('span', { title: 'Затрачено времени' }, '⏱ ' + fmtDuration(t.total_seconds)),
-        t.attachment_count > 0 && h('span', { title: 'Вложения' }, '📎 ' + t.attachment_count),
+        t.total_seconds > 0 && h('span', { title: i18n.t('Затрачено времени') }, '⏱ ' + fmtDuration(t.total_seconds)),
+        t.attachment_count > 0 && h('span', { title: i18n.t('Вложения') }, '📎 ' + t.attachment_count),
       ),
       // Moving without a mouse or on a phone, where dragging is awkward.
       h(
         'div',
         { class: 'board-actions' },
-        t.status === 'review' && h('button', { class: 'primary small', onclick: () => move(t.id, 'done') }, 'Принять'),
-        t.status === 'review' && h('button', { class: 'small', onclick: () => (location.hash = `#/tasks/${t.id}`) }, 'Открыть'),
+        t.status === 'review' && h('button', { class: 'primary small', onclick: () => move(t.id, 'done') }, i18n.t('Принять')),
+        t.status === 'review' && h('button', { class: 'small', onclick: () => (location.hash = `#/tasks/${t.id}`) }, i18n.t('Открыть')),
         h(
           'select',
-          { class: 'small', 'aria-label': `Статус задачи ${t.id}`, onchange: (e) => move(t.id, e.target.value) },
+          { class: 'small', 'aria-label': i18n.t`Статус задачи ${t.id}`, onchange: (e) => move(t.id, e.target.value) },
           Object.entries(STATUS).map(([v, l]) => h('option', { value: v, selected: v === t.status }, l)),
         ),
       ),
@@ -2142,9 +2148,9 @@ async function boardView(project) {
             h('div', { class: `st-${status} row`, style: 'gap:6px' }, h('span', { class: 'dot' }), h('strong', null, STATUS[status]), h('span', { class: 'muted' }, String(all.length))),
             h('div', { class: 'muted small' }, COLUMN_HINT[status]),
           ),
-          shown.length ? shown.map(card) : h('div', { class: 'muted small board-empty' }, 'Пусто'),
+          shown.length ? shown.map(card) : h('div', { class: 'muted small board-empty' }, i18n.t('Пусто')),
           all.length > shown.length &&
-            h('button', { class: 'ghost small', onclick: () => ((board.allDone = true), load()) }, `Показать все ${all.length}`),
+            h('button', { class: 'ghost small', onclick: () => ((board.allDone = true), load()) }, i18n.t`Показать все ${all.length}`),
         );
       }),
     );
@@ -2163,19 +2169,19 @@ async function boardView(project) {
 
   return shell(
     'board',
-    h('div', { class: 'page-head' }, h('h1', null, 'Доска'), h('span', { class: 'spacer' }), h('button', { class: 'primary', onclick: () => newTaskDialog(projects, { project: board.project }) }, 'Новая задача')),
+    h('div', { class: 'page-head' }, h('h1', null, i18n.t('Доска')), h('span', { class: 'spacer' }), h('button', { class: 'primary', onclick: () => newTaskDialog(projects, { project: board.project }) }, i18n.t('Новая задача'))),
     h(
       'div',
       { class: 'filters' },
-      h('select', { 'aria-label': 'Проект', ...bind('project') }, option('', 'Все проекты', board.project), projects.map((p) => option(p, p, board.project))),
-      h('select', { 'aria-label': 'Уровень', ...bind('work') }, option('work', 'Таски и подтаски', board.work), option('plan', 'Эпики и стори', board.work), option('all', 'Все уровни', board.work)),
-      h('select', { 'aria-label': 'Тип', ...bind('kind') }, option('', 'Все типы', board.kind), Object.entries(KIND).map(([v, l]) => option(v, l, board.kind))),
-      h('select', { 'aria-label': 'Исполнитель', ...bind('assignee') }, option('', 'Любой исполнитель', board.assignee), state.accounts.filter((a) => !a.disabled).map((a) => option(a.name, a.name, board.assignee))),
+      h('select', { 'aria-label': i18n.t('Проект'), ...bind('project') }, option('', i18n.t('Все проекты'), board.project), projects.map((p) => option(p, p, board.project))),
+      h('select', { 'aria-label': i18n.t('Уровень'), ...bind('work') }, option('work', i18n.t('Таски и подтаски'), board.work), option('plan', i18n.t('Эпики и стори'), board.work), option('all', i18n.t('Все уровни'), board.work)),
+      h('select', { 'aria-label': i18n.t('Тип'), ...bind('kind') }, option('', i18n.t('Все типы'), board.kind), Object.entries(KIND).map(([v, l]) => option(v, l, board.kind))),
+      h('select', { 'aria-label': i18n.t('Исполнитель'), ...bind('assignee') }, option('', i18n.t('Любой исполнитель'), board.assignee), state.accounts.filter((a) => !a.disabled).map((a) => option(a.name, a.name, board.assignee))),
     ),
     h(
       'p',
       { class: 'muted small', style: 'margin:-4px 0 12px' },
-      'Агент берёт задачу в работу и сдаёт её на проверку. Принять её или вернуть в работу — решаете вы. Карточки можно перетаскивать между колонками.',
+      i18n.t('Агент берёт задачу в работу и сдаёт её на проверку. Принять её или вернуть в работу — решаете вы. Карточки можно перетаскивать между колонками.'),
     ),
     err,
     columns,
@@ -2188,17 +2194,17 @@ const DAY_MS = 86400e3;
 const DAY_PX = 20;
 // How much was worked in a day, as steps of one hue.
 const LOAD_STEPS = [
-  [15 * 60, 'до 15 мин'],
-  [3600, 'до 1 ч'],
-  [3 * 3600, 'до 3 ч'],
-  [Infinity, 'больше 3 ч'],
+  [15 * 60, i18n.t('до 15 мин')],
+  [3600, i18n.t('до 1 ч')],
+  [3 * 3600, i18n.t('до 3 ч')],
+  [Infinity, i18n.t('больше 3 ч')],
 ];
 const loadStep = (seconds) => LOAD_STEPS.findIndex(([limit]) => seconds <= limit) + 1;
 const tl = { project: '', closed: null };
 
 const dayOf = (iso, tz) => new Date(iso).toLocaleDateString('en-CA', { timeZone: tz });
 const dayNumber = (day) => Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10)) / DAY_MS;
-const dayLabel = (day, options) => new Date(day + 'T00:00:00Z').toLocaleDateString('ru-RU', { timeZone: 'UTC', ...options });
+const dayLabel = (day, options) => new Date(day + 'T00:00:00Z').toLocaleDateString(i18n.dateLocale, { timeZone: 'UTC', ...options });
 
 async function timelineView(project) {
   if (project !== undefined && project !== tl.project) {
@@ -2228,7 +2234,7 @@ async function timelineView(project) {
 
   const allDays = rows.flatMap(([t]) => [...Object.keys(t.days), ...(t.marker ? [t.marker] : [])]);
   if (!allDays.length) {
-    return shell('timeline', h('div', { class: 'page-head' }, h('h1', null, 'График')), timelineFilters(projects), h('div', { class: 'card empty' }, 'В проекте пока нет задач'));
+    return shell('timeline', h('div', { class: 'page-head' }, h('h1', null, i18n.t('График'))), timelineFilters(projects), h('div', { class: 'card empty' }, i18n.t('В проекте пока нет задач')));
   }
   const first = Math.min(...allDays.map(dayNumber)) - 1;
   const last = Math.max(Math.max(...allDays.map(dayNumber)), dayNumber(dayOf(new Date().toISOString(), tz))) + 1;
@@ -2241,7 +2247,7 @@ async function timelineView(project) {
   for (const [i, day] of days.entries()) {
     const key = day.slice(0, 7);
     if (months.at(-1)?.key === key) months.at(-1).span++;
-    else months.push({ key, span: 1, label: dayLabel(day, { month: 'long', year: 'numeric' }).replace(' г.', ''), at: i });
+    else months.push({ key, span: 1, label: dayLabel(day, { month: 'long', year: 'numeric' }).replace(i18n.t(' г.'), ''), at: i });
   }
   const weekend = (day) => [0, 6].includes(new Date(day + 'T00:00:00Z').getUTCDay());
 
@@ -2270,7 +2276,7 @@ async function timelineView(project) {
                     {
                       class: 'ghost tl-toggle',
                       'aria-expanded': String(!tl.closed.has(t.id)),
-                      'aria-label': `${tl.closed.has(t.id) ? 'Развернуть' : 'Свернуть'}: ${t.title}`,
+                      'aria-label': `${tl.closed.has(t.id) ? i18n.t('Развернуть') : i18n.t('Свернуть')}: ${t.title}`,
                       onclick: () => {
                         tl.closed.has(t.id) ? tl.closed.delete(t.id) : tl.closed.add(t.id);
                         paint();
@@ -2298,7 +2304,7 @@ async function timelineView(project) {
                 withTip(
                   h('span', { class: 'tl-day tl-untimed', style: `left:${(dayNumber(day) - first) * DAY_PX + 2}px` }),
                   dayLabel(day, { day: 'numeric', month: 'long', weekday: 'short' }),
-                  `Время не записано\n${t.title}`,
+                  i18n.t`Время не записано\n${t.title}`,
                 ),
               ),
             ),
@@ -2317,7 +2323,7 @@ async function timelineView(project) {
       h(
         'div',
         { class: 'tl-head' },
-        h('div', { class: 'tl-name tl-corner' }, `${rows.length} ${rows.length === 1 ? 'задача' : 'задач'}`),
+        h('div', { class: 'tl-name tl-corner' }, `${rows.length} ${rows.length === 1 ? i18n.t('задача') : i18n.t('задач')}`),
         h(
           'div',
           { class: 'tl-track', style: `width:${width}px` },
@@ -2329,7 +2335,7 @@ async function timelineView(project) {
         'div',
         { class: 'tl-grid', style: `--width:${width}px` },
         days.map((day, i) => weekend(day) && h('span', { class: 'tl-weekend', style: `left:${i * DAY_PX}px` })),
-        h('span', { class: 'tl-today', title: 'Сегодня' }),
+        h('span', { class: 'tl-today', title: i18n.t('Сегодня') }),
         body,
       ),
     ),
@@ -2339,7 +2345,7 @@ async function timelineView(project) {
 
   return shell(
     'timeline',
-    h('div', { class: 'page-head' }, h('h1', null, 'График'), h('span', { class: 'muted' }, `${fmtDuration(totalSeconds)} за ${workedDays} ${workedDays === 1 ? 'день' : 'дн.'} работы`)),
+    h('div', { class: 'page-head' }, h('h1', null, i18n.t('График')), h('span', { class: 'muted' }, i18n.t`${fmtDuration(totalSeconds)} за ${workedDays} ${workedDays === 1 ? i18n.t('день') : i18n.t('дн.')} работы`)),
     timelineFilters(projects, () => {
       tl.closed = new Set(rows.filter(([t]) => t.kids > 0).map(([t]) => t.id));
       paint();
@@ -2350,10 +2356,10 @@ async function timelineView(project) {
     h(
       'div',
       { class: 'tl-legend' },
-      h('span', { class: 'muted' }, 'Работа за день:'),
+      h('span', { class: 'muted' }, i18n.t('Работа за день:')),
       LOAD_STEPS.map(([, label], i) => h('span', null, h('i', { class: `tl-day load-${i + 1}` }), label)),
-      h('span', null, h('i', { class: 'tl-day tl-untimed' }), 'время не записано'),
-      h('span', { class: 'muted' }, `Дни — по часовому поясу ${tz}`),
+      h('span', null, h('i', { class: 'tl-day tl-untimed' }), i18n.t('время не записано')),
+      h('span', { class: 'muted' }, i18n.t`Дни — по часовому поясу ${tz}`),
     ),
     grid,
   );
@@ -2366,13 +2372,13 @@ function timelineFilters(projects, collapse, expand) {
     h(
       'select',
       {
-        'aria-label': 'Проект',
+        'aria-label': i18n.t('Проект'),
         onchange: (e) => (location.hash = `#/timeline/${encodeURIComponent(e.target.value)}`),
       },
       projects.map((p) => h('option', { value: p, selected: p === tl.project }, p)),
     ),
-    collapse && h('button', { onclick: collapse }, 'Свернуть всё'),
-    expand && h('button', { onclick: expand }, 'Развернуть всё'),
+    collapse && h('button', { onclick: collapse }, i18n.t('Свернуть всё')),
+    expand && h('button', { onclick: expand }, i18n.t('Развернуть всё')),
   );
 }
 
@@ -2446,7 +2452,7 @@ async function boot() {
   await render();
   const feedback = new URLSearchParams(location.search);
   if (feedback.has('auth_error') || feedback.has('auth')) {
-    toast(feedback.get('auth_error') || (feedback.get('auth') === 'linked' ? 'Способ входа привязан' : 'Вы вошли в аккаунт'));
+    toast(feedback.get('auth_error') || (feedback.get('auth') === 'linked' ? i18n.t('Способ входа привязан') : i18n.t('Вы вошли в аккаунт')));
     history.replaceState(null, '', location.pathname + location.hash);
   }
   if (state.me) {
