@@ -13,7 +13,8 @@
     "account": "node src/cli.ts",
     "wake": "node scripts/wake.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"test/**/*.test.ts\""
+    "test": "node --test \"test/**/*.test.ts\"",
+    "demo": "node scripts/demo.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
