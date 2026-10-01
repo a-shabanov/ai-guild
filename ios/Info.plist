@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleURLTypes</key>
+    <array><dict>
+        <key>CFBundleURLName</key><string>dev.aitracker.auth</string>
+        <key>CFBundleURLSchemes</key><array><string>aitracker</string></array>
+    </dict></array>
+	<!-- The tracker usually runs on localhost or the LAN over plain http. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- Without this iOS refuses connections to a tracker on the local network. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>AI Tracker подключается к серверу трекера в вашей локальной сети.</string>
+	<!-- Host and port of the tracker offered on the sign-in screen; set when building for a phone. -->
+	<key>TrackerServer</key>
+	<string>$(TRACKER_SERVER)</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID защищает вход в AI Tracker вместо ввода ключа.</string>
+	<!-- Set in Config.xcconfig; empty means passkeys and remote push are off. -->
+	<key>TrackerDomain</key>
+	<string>$(TRACKER_DOMAIN)</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>dev.aitracker.app.refresh</string>
+	</array>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>inbox</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Входящие</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>tray</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>new</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Новая задача</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>plus</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>analytics</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Аналитика</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>chart.bar</string>
+		</dict>
+	</array>
+</dict>
+</plist>

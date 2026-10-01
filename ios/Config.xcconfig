@@ -1,0 +1,19 @@
+// Settings that depend on your Apple Developer account and your server.
+//
+// Face ID lock, offline mode, the comment outbox, the badge and home-screen shortcuts work
+// without any of this. Passkeys and remote push need a paid Apple Developer team and an
+// HTTPS domain, because iOS ties both to the app's signature:
+//
+//   1. Set your team in Xcode (target -> Signing & Capabilities).
+//   2. TRACKER_DOMAIN: the host of your tracker, no scheme. e.g. tracker.example.com
+//   3. TRACKER_ENTITLEMENTS = AITracker.entitlements
+//   4. On the server set APPLE_APP_IDS=<TeamID>.dev.aitracker.app and the APNS_* variables
+//      (see README).
+
+// Version and build number: `node scripts/version.mjs build` in the repository root.
+#include "Version.xcconfig"
+
+TRACKER_DOMAIN =
+// Host and port of the tracker for a phone, no scheme: my-mac.local:4600. Empty means localhost.
+TRACKER_SERVER =
+TRACKER_ENTITLEMENTS =
