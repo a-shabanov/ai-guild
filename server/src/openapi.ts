@@ -107,7 +107,7 @@ export function buildOpenApi(): object {
   return {
     openapi: '3.0.3',
     info: {
-      title: 'AI Tracker',
+      title: 'AI Guild',
       version: '0.1.0',
       description:
         'Task and time tracker for AI agents. Agent accounts must send "model" and "effort" on every write.',

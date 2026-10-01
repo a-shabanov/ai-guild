@@ -88,7 +88,7 @@ final class AppState {
     }
 
     func unlock() async throws {
-        let context = try await Biometrics.authenticate(reason: "Вход в AI Tracker")
+        let context = try await Biometrics.authenticate(reason: "Вход в AI Guild")
         guard let credential = Keychain.load(context: context) else {
             // Face ID was re-enrolled: iOS discarded the item bound to the old enrollment.
             signOut()

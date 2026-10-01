@@ -64,7 +64,7 @@ struct LoginView: View {
                     Text("После входа в настройках можно включить \(Biometrics.name), чтобы не вводить ключ.")
                 }
             }
-            .navigationTitle("AI Tracker")
+            .navigationTitle("AI Guild")
             .onAppear { if server.isEmpty { server = state.serverURL } }
             .task(id: server) {
                 providers = nil

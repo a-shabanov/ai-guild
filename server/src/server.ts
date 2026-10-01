@@ -46,7 +46,7 @@ if (import.meta.main) {
     );
   }
   const server = buildApp().listen(config.port, config.host, () => {
-    console.log(`AI Tracker  http://${config.host}:${config.port}`);
+    console.log(`AI Guild  http://${config.host}:${config.port}`);
     console.log(`MCP         http://${config.host}:${config.port}/mcp`);
     console.log(`OpenAPI     http://${config.host}:${config.port}/api/openapi.json`);
   });

@@ -29,7 +29,7 @@ export const config = {
   webauthn: {
     origins,
     rpId: process.env.WEBAUTHN_RP_ID ?? new URL(origins[0]!).hostname,
-    rpName: 'AI Tracker',
+    rpName: 'AI Guild',
   },
   sessionDays: Number(process.env.SESSION_DAYS ?? 90),
   socialAuth: {

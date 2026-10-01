@@ -113,7 +113,7 @@ struct LockView: View {
                 .font(.system(size: 44))
                 .foregroundStyle(.tint)
                 .accessibilityHidden(true)
-            Text("AI Tracker").font(.title.bold())
+            Text("AI Guild").font(.title.bold())
             ErrorBanner(message: error)
                 .multilineTextAlignment(.center)
             Spacer()

@@ -105,6 +105,13 @@ pre {
   color: var(--text);
   white-space: nowrap;
 }
+.brand-icon {
+  width: 24px;
+  height: 24px;
+  margin-right: 7px;
+  border-radius: 5px;
+  vertical-align: middle;
+}
 .brand .version {
   margin-left: 6px;
   color: var(--muted);

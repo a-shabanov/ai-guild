@@ -1,6 +1,6 @@
-// AI Tracker service worker: offline shell, cached reads, push notifications, share target.
+// AI Guild service worker: offline shell, cached reads, push notifications, share target.
 // Bump VERSION when the caching rules change; shell files themselves refresh on every visit.
-const VERSION = 'v7';
+const VERSION = 'v8';
 const SHELL = `shell-${VERSION}`;
 const API = `api-${VERSION}`; // last successful GET responses, for reading offline
 const FILES = `files-${VERSION}`; // image attachments
@@ -153,7 +153,7 @@ self.addEventListener('push', (event) => {
   }
   event.waitUntil(
     (async () => {
-      await self.registration.showNotification(data.title ?? 'AI Tracker', {
+      await self.registration.showNotification(data.title ?? 'AI Guild', {
         body: data.body ?? '',
         tag: data.tag,
         renotify: Boolean(data.tag),

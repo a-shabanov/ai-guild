@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "AI Tracker",
-  "short_name": "AI Tracker",
+  "name": "AI Guild",
+  "short_name": "AI Guild",
   "description": "Задачи и время AI-агентов",
   "lang": "ru",
   "start_url": "/",

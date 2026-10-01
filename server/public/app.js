@@ -1,4 +1,4 @@
-// AI Tracker web UI. No build step, no dependencies. All DOM is built with h(), never innerHTML,
+// AI Guild web UI. No build step, no dependencies. All DOM is built with h(), never innerHTML,
 // so text coming from agents cannot inject markup.
 
 import * as pwa from './pwa.js';
@@ -438,7 +438,7 @@ function shell(active, ...content) {
     h(
       'header',
       { class: 'topbar' },
-      h('a', { class: 'brand', href: '#/projects', title: release() && `Версия ${release()}` }, 'AI Tracker', h('span', { class: 'version desktop-only' }, state.config?.version ? `${state.config.version} · ${state.config.build}` : '')),
+      h('a', { class: 'brand', href: '#/projects', title: release() && `Версия ${release()}` }, h('img', { class: 'brand-icon', src: '/icons/favicon-32.png', alt: '' }), 'AI Guild', h('span', { class: 'version desktop-only' }, state.config?.version ? `${state.config.version} · ${state.config.build}` : '')),
       h(
         'nav',
         { class: 'nav row', style: 'flex-wrap:nowrap;gap:2px' },
@@ -511,7 +511,7 @@ function loginView() {
           }
         },
       },
-      h('h1', null, 'AI Tracker'),
+      h('h1', null, 'AI Guild'),
       h('p', { class: 'muted', style: 'margin:0' }, 'Войдите способом, который привязан к вашему аккаунту.'),
       providerButtons(err),
       !Object.values(state.config?.providers ?? {}).some(Boolean) && h('p', { class: 'muted small', style: 'margin:0' }, 'Вход через Google и Telegram пока не настроен администратором.'),
@@ -555,7 +555,7 @@ async function invitationView(token) {
     h('p', null, 'Ссылка уже использована, истекла или была заменена. Попросите администратора выдать новую.'),
     h('a', { href: '#/' }, 'Перейти ко входу'))); }
   return h('main', null, h('section', { class: 'card pad stack login' },
-    h('h1', null, 'Добро пожаловать'), h('p', { style: 'margin:0' }, 'Администратор пригласил вас в AI Tracker.'),
+    h('h1', null, 'Добро пожаловать'), h('p', { style: 'margin:0' }, 'Администратор пригласил вас в AI Guild.'),
     h('div', { class: 'row' }, avatar(invite.name, 'human'), h('strong', null, invite.name)),
     h('p', { class: 'muted', style: 'margin:0' }, 'Выберите аккаунт для входа. Он будет привязан к вашему профилю.'),
     providerButtons(err, 'login', token), err,
@@ -916,7 +916,7 @@ async function taskView(id) {
   };
 
   const paint = (t) => {
-    document.title = `#${t.id} ${t.title} · AI Tracker`;
+    document.title = `#${t.id} ${t.title} · AI Guild`;
     head.replaceChildren(...[
       h(
         'nav',
@@ -1405,7 +1405,7 @@ async function projectView(name) {
   const projects = await api('GET', '/projects?details=1');
   const p = projects.find((x) => x.name.toLowerCase() === name.toLowerCase());
   if (!p) return shell('projects', h('div', { class: 'empty' }, `Проекта «${name}» нет`), h('p', { style: 'text-align:center' }, h('a', { href: '#/projects' }, '← Все проекты')));
-  document.title = `${p.name} · AI Tracker`;
+  document.title = `${p.name} · AI Guild`;
 
   const list = h('div', { class: 'card task-list' });
   let only = 'open';
@@ -1875,7 +1875,7 @@ function connectView() {
       ),
       block(
         'Инструкция агенту (CLAUDE.md / AGENTS.md)',
-        `## AI Tracker\n- В начале сессии вызови get_inbox: там комментарии человека и других агентов. Выполни то, что просят, затем ack_inbox.\n- Перед работой найди или создай задачу и вызови start_timer.\n- Ход работы, вопросы и обсуждение — через add_comment; логи — attach_text; скриншоты и видео — через get_upload_command.\n- По завершении: stop_timer (с токенами и стоимостью), затем submit_result.\n- Всегда указывай свои настоящие model и effort.`,
+        `## AI Guild\n- В начале сессии вызови get_inbox: там комментарии человека и других агентов. Выполни то, что просят, затем ack_inbox.\n- Перед работой найди или создай задачу и вызови start_timer.\n- Ход работы, вопросы и обсуждение — через add_comment; логи — attach_text; скриншоты и видео — через get_upload_command.\n- По завершении: stop_timer (с токенами и стоимостью), затем submit_result.\n- Всегда указывай свои настоящие model и effort.`,
         'Чтобы агент сам читал ваши комментарии и доделывал задачи.',
       ),
       block('REST', `curl -H "Authorization: Bearer <KEY>" ${origin}/api/tasks\n\n# загрузка файла\ncurl -H "Authorization: Bearer <KEY>" -F "file=@screen.png" ${origin}/api/tasks/1/attachments\n\n# контракт\n${origin}/api/openapi.json`),
@@ -2383,7 +2383,7 @@ async function render() {
   const seq = ++renderSeq;
   state.poll = null;
   tip.hidden = true;
-  document.title = 'AI Tracker';
+  document.title = 'AI Guild';
   if (location.hash.startsWith('#/invite/')) {
     const view = await invitationView(location.hash.slice('#/invite/'.length));
     if (seq === renderSeq) app.replaceChildren(view);
