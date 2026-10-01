@@ -4,7 +4,7 @@ This project is an early self-hosted preview. There is no promise yet of product
 
 ## Reporting a vulnerability
 
-Do not put exploitable details, keys, private data or a live proof of exploitation in a public issue. Once the repository is published, use GitHub's private vulnerability reporting if it is enabled. A verified private contact must be added before public release; until then, contact the repository owner privately through an existing channel.
+Do not put exploitable details, keys, private data or a live proof of exploitation in a public issue. Use [GitHub's private vulnerability reporting](https://github.com/a-shabanov/ai-guild/security/advisories/new) to contact the maintainers. Private reporting is enabled for this repository.
 
 Include the affected revision, deployment mode, impact and a minimal reproduction using synthetic data. Do not test another person's deployment without their authorisation.
 

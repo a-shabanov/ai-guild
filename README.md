@@ -8,6 +8,7 @@
 <p align="center">
   <a href="#see-it-in-action">Product tour</a> ·
   <a href="#get-started">Get started</a> ·
+  <a href="https://github.com/a-shabanov/ai-guild/releases">Releases</a> ·
   <a href="docs/agents.md">Connect your agents</a> ·
   <a href="docs/ru/guide.md">Русская документация</a>
 </p>

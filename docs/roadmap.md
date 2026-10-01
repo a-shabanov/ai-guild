@@ -10,7 +10,9 @@ The first target is open source and on-premise distribution. SaaS and mobile sto
 - [x] Product name: AI Guild.
 - [x] Blue-gradient human + agent mark with a shared orange result applied to the product.
 - [x] Apache License 2.0.
-- [ ] Public GitHub repository, project metadata and contribution process.
+- [x] Public GitHub repository, project metadata and contribution process.
+
+Source previews are available on [GitHub Releases](https://github.com/a-shabanov/ai-guild/releases). The production distribution has its own acceptance criteria below.
 
 ## First production on-premise release
 
