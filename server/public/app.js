@@ -92,13 +92,22 @@ async function api(method, path, body) {
     throw Object.assign(new Error(i18n.t('Нет соединения с сервером')), { offline: true });
   }
   // The service worker marks answers it served from its cache while the network was down.
-  setOffline(res.headers.has('X-From-Cache'));
+  const offline = res.headers.has('X-From-Cache') || res.headers.has('X-Offline') || navigator.onLine === false;
+  setOffline(offline);
   const data = await res.json().catch(() => null);
   if (res.status === 401 && state.me) {
     state.me = null;
     render();
   }
-  if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+  if (!res.ok) throw Object.assign(new Error(offline
+    ? i18n.t('Нет сети. Данные этого экрана ещё не сохранены на устройстве.')
+    : data?.error ?? `HTTP ${res.status}`), { offline });
+  const list = method === 'GET' && /^\/(tasks|projects|accounts|passkeys|devices|auth\/identities)(\?|$)/.test(path);
+  if (method === 'GET' && (data === null || typeof data !== 'object' || (list && !Array.isArray(data)))) {
+    throw Object.assign(new Error(offline
+      ? i18n.t('Нет сети. Данные этого экрана ещё не сохранены на устройстве.')
+      : i18n.t('Не удалось загрузить данные. Попробуйте обновить экран.')), { offline });
+  }
   return data;
 }
 
@@ -510,7 +519,7 @@ function shell(active, ...content) {
         h('span', { class: 'small' }, state.me.name),
       ),
     ),
-    h('div', { class: 'offline-bar', role: 'status' }, i18n.t('Нет сети — показаны сохранённые данные')),
+    h('div', { class: 'offline-bar', role: 'status' }, i18n.t('Нет сети — офлайн-режим')),
     h('main', null, content),
   ];
 }
@@ -2662,7 +2671,17 @@ const navigation = createNavigation({
       h('div', { class: 'page-head' }, h('h1', null, labels[route] || i18n.t('Проекты'))),
       h('div', { class: 'card empty', role: 'status', 'aria-busy': 'true' }, i18n.t('Загрузка…'))));
   },
-  error: (key, ex) => state.me ? shell(key.split('/')[1], h('div', { class: 'empty error' }, ex.message)) : loginView(),
+  error: (key, ex) => state.me ? shell(key.split('/')[1],
+    h('section', { class: 'card pad stack offline-empty' },
+      h('h1', null, ex.offline ? i18n.t('Нет соединения') : i18n.t('Не удалось загрузить экран')),
+      h('p', { class: 'muted', style: 'margin:0' }, ex.offline
+        ? i18n.t('Данные этого экрана ещё не сохранены на устройстве. Подключитесь к сети и повторите загрузку.') : ex.message),
+      h('div', null, h('button', { onclick: async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        button.textContent = i18n.t('Загрузка…');
+        try { await render(); } finally { button.disabled = false; button.textContent = i18n.t('Повторить загрузку'); }
+      } }, i18n.t('Повторить загрузку'))))) : loginView(),
   changed: (entry) => {
     state.poll = entry ? () => Promise.resolve(navigation.refresh()) : null;
     document.title = entry?.title || 'AI Guild';
@@ -2779,7 +2798,10 @@ pwa.registerServiceWorker((url) => {
 pwa.onInstallChange(() => /^#\/(profile|settings)/.test(location.hash) && render());
 addEventListener('online', () => {
   flushOutbox();
-  state.poll?.().catch(() => {});
+  if (!booting) {
+    if (state.me) render({ reload: false });
+    else boot();
+  }
 });
 
 addEventListener('hashchange', () => { if (!booting) render({ reload: false }); });

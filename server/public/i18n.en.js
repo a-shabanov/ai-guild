@@ -1,5 +1,12 @@
 // English interface catalogue. Russian source phrases are stable message keys.
 export default {
+  'Нет сети — офлайн-режим': 'Offline mode',
+  'Нет сети. Данные этого экрана ещё не сохранены на устройстве.': 'Offline. This screen has not been saved on this device yet.',
+  'Не удалось загрузить данные. Попробуйте обновить экран.': 'Could not load data. Try refreshing this screen.',
+  'Нет соединения': 'No connection',
+  'Не удалось загрузить экран': 'Could not load this screen',
+  'Данные этого экрана ещё не сохранены на устройстве. Подключитесь к сети и повторите загрузку.': 'This screen has not been saved on this device yet. Connect to the internet and try again.',
+  'Повторить загрузку': 'Try again',
   'Применяется ко всем устройствам аккаунта. События остаются во входящих.': 'Applies to all devices on your account. Events remain in your inbox.',
   'Результаты работы': 'Work results',
   'Комментарии и упоминания': 'Comments and mentions',
