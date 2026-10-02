@@ -1,6 +1,6 @@
 // AI Guild service worker: offline shell, cached reads, push notifications, share target.
 // VERSION is written by scripts/version.mjs. Each release caches its complete shell.
-const VERSION = 'v0.3.6-b14';
+const VERSION = 'v0.3.7-b15';
 const SHELL = `shell-${VERSION}`;
 const API = `api-${VERSION}`; // last successful GET responses, for reading offline
 const FILES = `files-${VERSION}`; // image attachments
@@ -68,17 +68,29 @@ async function shell(request) {
   return cached ?? (await fresh) ?? new Response('Нет сети', { status: 503 });
 }
 
+async function validApiRead(response) {
+  if (!response.ok) return false;
+  try {
+    const data = await response.clone().json();
+    return data !== null && typeof data === 'object';
+  } catch { return false; }
+}
+
 async function apiRead(request) {
   const cache = await caches.open(API);
   try {
     const res = await fetch(request);
-    if (res.ok) cache.put(request, res.clone());
+    if (await validApiRead(res)) await cache.put(request, res.clone()).catch(() => {});
     // The session ended: nothing cached may outlive it.
     if (res.status === 401) await dropPrivate();
     return res;
   } catch (err) {
     const cached = await cache.match(request);
-    if (!cached) throw err;
+    if (!cached || !(await validApiRead(cached))) {
+      if (cached) await cache.delete(request);
+      return Response.json({ error: 'Нет сети. Данные этого экрана ещё не сохранены на устройстве.' },
+        { status: 503, headers: { 'X-Offline': '1' } });
+    }
     const headers = new Headers(cached.headers);
     headers.set('X-From-Cache', '1');
     return new Response(cached.body, { status: cached.status, headers });
