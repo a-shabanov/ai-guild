@@ -2019,7 +2019,7 @@ async function profileView() {
   const err = h('div', { class: 'error small', role: 'alert' });
   const optional = (promise) => promise.catch((ex) => { err.textContent = ex.message; return null; });
   const [passkeys, pushOn, identities, secondFactor, devices] = await Promise.all([
-    optional(api('GET', '/passkeys')), pwa.pushEnabled().catch(() => false),
+    optional(api('GET', '/passkeys')), pwa.pushEnabled(api).catch(() => false),
     optional(api('GET', '/auth/identities')), optional(api('GET','/auth/2fa/settings')),
     state.me.kind==='human' ? optional(api('GET','/devices')) : []]);
   const run = (fn) => async (e) => {
@@ -2063,7 +2063,7 @@ async function profileView() {
         h('h2', null, i18n.t('Уведомления')),
         h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Push, когда агент сдал результат, ответил в вашей задаче или упомянул вас.')),
         pushOn
-          ? h('div', { class: 'row' }, h('span', { class: 'chip st-done' }, h('span', { class: 'dot' }), i18n.t('Включены на этом устройстве')), h('button', { onclick: run(() => pwa.disablePush(api)) }, i18n.t('Выключить')))
+          ? h('div', { class: 'row' }, h('span', { class: 'chip st-done' }, h('span', { class: 'dot' }), i18n.t('Включены на этом устройстве')), h('button', { onclick: run(() => pwa.testPush(api).then(() => toast(i18n.t('Тестовое уведомление отправлено. Проверьте уведомления устройства.')))) }, i18n.t('Отправить тест')), h('button', { onclick: run(() => pwa.disablePush(api)) }, i18n.t('Выключить')))
           : pushBlock
             ? h('div', { class: 'muted small' }, pushBlock)
             : h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.enablePush(api)) }, i18n.t('Включить уведомления'))),
@@ -2655,6 +2655,7 @@ async function boot() {
     if (state.me) {
       const [accounts] = await Promise.all([api('GET', '/accounts'), refreshInboxCount().catch(() => {})]);
       state.accounts = accounts;
+      pwa.pushEnabled(api).catch(() => {});
     }
   } catch {
     state.me = null;

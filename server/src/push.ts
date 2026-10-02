@@ -70,6 +70,36 @@ export async function unsubscribe(actor: Actor, endpoint: string): Promise<void>
   ]);
 }
 
+async function sendWebPush(subscription: Row, message: object): Promise<void> {
+  const keys = await vapidKeys();
+  try {
+    await webpush.sendNotification(
+      { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
+      JSON.stringify(message),
+      { vapidDetails: { subject: config.vapidSubject, ...keys }, TTL: 24 * 3600, timeout: 10_000 },
+    );
+  } catch (err: any) {
+    if (err.statusCode === 404 || err.statusCode === 410) {
+      await q('delete from push_subscriptions where id = $1', [subscription.id]);
+      throw new HttpError(409, 'Подписка устарела. Выключите и снова включите уведомления.');
+    }
+    throw err;
+  }
+}
+
+// Tests the real provider delivery path, only for the caller's selected subscription.
+export async function testNotification(actor: Actor, endpoint: string): Promise<void> {
+  const subscription = await q1('select id, endpoint, p256dh, auth from push_subscriptions where account_id = $1 and endpoint = $2', [actor.id, endpoint]);
+  if (!subscription) throw new HttpError(404, 'Подписка на уведомления не найдена');
+  try {
+    await sendWebPush(subscription, { title: 'AI Guild', body: 'Уведомления включены. Здесь будут результаты и ответы по вашим задачам.', url: '/#/settings', tag: 'push-test' });
+  } catch (err: any) {
+    if (err instanceof HttpError) throw err;
+    console.error(`test push to ${new URL(subscription.endpoint).host} failed: ${err.statusCode ?? err.message}`);
+    throw new HttpError(502, 'Сервис уведомлений не принял сообщение. Попробуйте ещё раз.');
+  }
+}
+
 const STATUS: Record<string, string> = {
   todo: 'К выполнению',
   in_progress: 'В работе',
@@ -155,24 +185,13 @@ export async function notifyEvent(eventId: number): Promise<void> {
     q('select id, token, environment from apns_devices where account_id = any($1)', [ids]),
   ]);
 
-  const keys = subs.length ? await vapidKeys() : undefined;
   await Promise.all([
     ...subs.map(async (s) => {
       try {
-        await webpush.sendNotification(
-          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          JSON.stringify(message),
-          {
-            vapidDetails: { subject: config.vapidSubject, ...keys! },
-            TTL: 24 * 3600,
-            timeout: 10_000,
-          },
-        );
+        await sendWebPush(s, message);
       } catch (err: any) {
         // The browser dropped this subscription; stop sending to it.
-        if (err.statusCode === 404 || err.statusCode === 410) {
-          await q('delete from push_subscriptions where id = $1', [s.id]);
-        } else {
+        if (!(err instanceof HttpError && err.status === 409)) {
           console.error(`push to ${new URL(s.endpoint).host} failed: ${err.statusCode ?? err.message}`);
         }
       }

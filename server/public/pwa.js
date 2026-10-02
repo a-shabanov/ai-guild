@@ -205,12 +205,15 @@ export const isIOS = () => ['iPhone', 'iPad'].includes(deviceName());
 /** Why push cannot be turned on here, or null when it can. */
 export function pushBlocker() {
   if (isIOS() && !isStandalone()) {
-    return i18n.t('На iPhone уведомления работают только в установленном приложении');
+    return i18n.t('На iPhone добавьте приложение на экран «Домой» через меню «Поделиться» в Safari, затем откройте его с иконки. Требуется iOS 16.4 или новее.');
   }
+  if (!isSecureContext) return i18n.t('Уведомления работают только по HTTPS или на localhost');
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
     return i18n.t('Браузер не поддерживает push-уведомления');
   }
-  if (Notification.permission === 'denied') return i18n.t('Уведомления запрещены в настройках браузера');
+  if (Notification.permission === 'denied') return isIOS()
+    ? i18n.t('Разрешите уведомления для AI Guild в настройках iPhone → Уведомления, затем вернитесь в приложение.')
+    : i18n.t('Уведомления запрещены в настройках браузера');
   return null;
 }
 
@@ -220,24 +223,41 @@ async function currentSubscription() {
   return (await registration?.pushManager.getSubscription()) ?? null;
 }
 
-export async function pushEnabled() {
-  return Notification.permission === 'granted' && (await currentSubscription()) !== null;
+export async function pushEnabled(api) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return false;
+  const subscription = await currentSubscription();
+  if (!subscription) return false;
+  // Restore the association after a server restore or signing into another account.
+  if (api) await api('POST', '/push/subscriptions', subscription.toJSON());
+  return true;
 }
 
 export async function enablePush(api) {
+  const blocker = pushBlocker();
+  if (blocker) throw new Error(blocker);
+  // Keep this call directly in the tap handler: iOS requires user activation.
   if ((await Notification.requestPermission()) !== 'granted') {
     throw new Error(i18n.t('Вы не разрешили уведомления'));
   }
-  const registration = await navigator.serviceWorker.ready;
+  const registration = await navigator.serviceWorker.getRegistration();
+  if (!registration?.active) throw new Error(i18n.t('Приложение ещё готовится. Попробуйте включить уведомления через несколько секунд.'));
   const { key } = await api('GET', '/push/key');
-  const subscription = await registration.pushManager.subscribe({
+  let subscription = await registration.pushManager.getSubscription();
+  const expectedKey = new Uint8Array(toBuffer(key));
+  const existingKey = subscription?.options?.applicationServerKey;
+  if (existingKey && toBase64url(existingKey) !== toBase64url(expectedKey)) {
+    await subscription.unsubscribe();
+    subscription = null;
+  }
+  const created = !subscription;
+  subscription ??= await registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: toBuffer(key),
   });
   try {
     await api('POST', '/push/subscriptions', subscription.toJSON());
   } catch (err) {
-    await subscription.unsubscribe();
+    if (created) await subscription.unsubscribe();
     throw err;
   }
 }
@@ -245,8 +265,15 @@ export async function enablePush(api) {
 export async function disablePush(api) {
   const subscription = await currentSubscription();
   if (!subscription) return;
-  await api('DELETE', '/push/subscriptions', { endpoint: subscription.endpoint }).catch(() => {});
-  await subscription.unsubscribe();
+  await api('DELETE', '/push/subscriptions', { endpoint: subscription.endpoint });
+  if (!(await subscription.unsubscribe())) throw new Error(i18n.t('Не удалось отключить уведомления на устройстве. Попробуйте ещё раз.'));
+}
+
+export async function testPush(api) {
+  const subscription = await currentSubscription();
+  if (!subscription) throw new Error(i18n.t('Сначала включите уведомления'));
+  await api('POST', '/push/subscriptions', subscription.toJSON());
+  await api('POST', '/push/test', { endpoint: subscription.endpoint });
 }
 
 // ---------- install ----------

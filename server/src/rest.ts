@@ -457,6 +457,10 @@ export function restRouter(): Router {
     await push.unsubscribe(req.actor, parse(S.PushSubscription.pick({ endpoint: true }), req.body).endpoint);
     res.json({ ok: true });
   });
+  r.post('/push/test', jsonBody, async (req, res) => {
+    await push.testNotification(req.actor, parse(S.PushSubscription.pick({ endpoint: true }), req.body).endpoint);
+    res.json({ ok: true });
+  });
 
   r.post('/push/apns', jsonBody, async (req, res) => {
     const { token, environment } = parse(S.ApnsDevice, req.body);
