@@ -1,6 +1,6 @@
 // AI Guild service worker: offline shell, cached reads, push notifications, share target.
 // Bump VERSION when the caching rules change; shell files themselves refresh on every visit.
-const VERSION = 'v10';
+const VERSION = 'v11';
 const SHELL = `shell-${VERSION}`;
 const API = `api-${VERSION}`; // last successful GET responses, for reading offline
 const FILES = `files-${VERSION}`; // image attachments
@@ -15,8 +15,11 @@ const SHELL_FILES = [
   '/i18n.js',
   '/i18n.en.js',
   '/manifest.webmanifest',
-  '/icons/icon-192.png',
-  '/icons/favicon-32.png',
+  "/icons/icon-512.png?v=314eb46d64bd",
+  "/icons/maskable-512.png?v=314eb46d64bd",
+  "/icons/apple-touch-icon.png?v=abe7666523c4",
+  '/icons/icon-192.png?v=0a9b53376488',
+  '/icons/favicon-32.png?v=c76fb7f1fa02',
 ];
 const FILES_LIMIT = 120;
 
@@ -49,6 +52,10 @@ async function shell(request) {
       return res;
     })
     .catch(() => null);
+  // Installed apps compare the manifest's icon URLs to detect identity updates.
+  if (new URL(request.url).pathname === '/manifest.webmanifest') {
+    return (await fresh) ?? cached ?? new Response('Нет сети', { status: 503 });
+  }
   // Serve the cached copy at once and refresh it in the background.
   return cached ?? (await fresh) ?? new Response('Нет сети', { status: 503 });
 }
@@ -161,7 +168,7 @@ self.addEventListener('push', (event) => {
         body: data.body ?? '',
         tag: data.tag,
         renotify: Boolean(data.tag),
-        icon: '/icons/icon-192.png',
+        icon: '/icons/icon-192.png?v=0a9b53376488',
         badge: '/icons/badge-96.png',
         data: { url: data.url ?? '/#/inbox' },
       });

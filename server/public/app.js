@@ -443,7 +443,7 @@ function shell(active, ...content) {
     h(
       'header',
       { class: 'topbar' },
-      h('a', { class: 'brand', href: '#/projects', title: release() && i18n.t`Версия ${release()}` }, h('img', { class: 'brand-icon', src: '/icons/favicon-32.png', alt: '' }), 'AI Guild', h('span', { class: 'version desktop-only' }, state.config?.version ? `${state.config.version} · ${state.config.build}` : '')),
+      h('a', { class: 'brand', href: '#/projects', title: release() && i18n.t`Версия ${release()}` }, h('img', { class: 'brand-icon', src: '/icons/favicon-32.png?v=c76fb7f1fa02', alt: '' }), 'AI Guild', h('span', { class: 'version desktop-only' }, state.config?.version ? `${state.config.version} · ${state.config.build}` : '')),
       h(
         'nav',
         { class: 'nav row', style: 'flex-wrap:nowrap;gap:2px' },
