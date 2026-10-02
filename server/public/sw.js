@@ -141,6 +141,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   if (url.pathname === '/mcp' || url.pathname === '/healthz') return;
   if (url.pathname.startsWith('/api/auth/')) return;
+  if (url.pathname === '/api/push/preferences') return; // Never offer stale notification switches offline.
   if (url.pathname === '/api/devices' || url.pathname.startsWith('/api/devices/')) return;
 
   if (/^\/api\/attachments\/\d+\/content$/.test(url.pathname)) {

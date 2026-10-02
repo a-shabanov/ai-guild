@@ -1,4 +1,15 @@
 [hidden] { display: none !important; }
+.notification-choice {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.notification-choice input { width: 22px; height: 22px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
+.notification-choices > p { padding-top: 12px; }
 html.pwa-refresh, html.pwa-refresh body { overscroll-behavior-y: none; }
 .pull-refresh {
   position: fixed;

@@ -2041,10 +2041,10 @@ async function profileView() {
   const blocker = pwa.passkeyBlocker(state.config);
   const err = h('div', { class: 'error small', role: 'alert' });
   const optional = (promise) => promise.catch((ex) => { err.textContent = ex.message; return null; });
-  const [passkeys, pushOn, identities, secondFactor, devices] = await Promise.all([
+  const [passkeys, pushOn, identities, secondFactor, devices, notificationPreferences] = await Promise.all([
     optional(api('GET', '/passkeys')), pwa.pushEnabled(api).catch(() => false),
     optional(api('GET', '/auth/identities')), optional(api('GET','/auth/2fa/settings')),
-    state.me.kind==='human' ? optional(api('GET','/devices')) : []]);
+    state.me.kind==='human' ? optional(api('GET','/devices')) : [], optional(api('GET', '/push/preferences'))]);
   const run = (fn) => async (e) => {
     err.textContent = '';
     const button = e.currentTarget;
@@ -2060,6 +2060,39 @@ async function profileView() {
   const bio = pwa.biometryName();
   const pushBlock = pwa.pushBlocker();
   const installed = pwa.isStandalone();
+  const notificationMessage = h('p', { class: 'muted small', role: 'status', style: 'margin:0' },
+    i18n.t('Применяется ко всем устройствам аккаунта. События остаются во входящих.'));
+  const notificationChoices = [
+    ['results', i18n.t('Результаты работы')],
+    ['comments', i18n.t('Комментарии и упоминания')],
+    ['statuses', i18n.t('Изменения статуса')],
+    ['assignments', i18n.t('Назначение исполнителя')],
+    ['tasks', i18n.t('Новые задачи')],
+    ['attachments', i18n.t('Приложенные файлы')],
+    ['activity', i18n.t('Другие события задачи')],
+  ].map(([key, label]) => {
+    const input = h('input', { type: 'checkbox', checked: notificationPreferences?.[key],
+      disabled: !notificationPreferences, 'aria-label': label,
+      onchange: async () => {
+        const checked = input.checked;
+        input.disabled = true;
+        notificationMessage.textContent = i18n.t('Сохраняем…');
+        notificationMessage.className = 'muted small';
+        notificationMessage.setAttribute('role', 'status');
+        try {
+          await api('PATCH', '/push/preferences', { [key]: checked });
+          notificationPreferences[key] = checked;
+          notificationMessage.textContent = i18n.t('Настройки уведомлений сохранены');
+        } catch (error) {
+          input.checked = notificationPreferences[key];
+          notificationMessage.className = 'error small';
+          notificationMessage.setAttribute('role', 'alert');
+          notificationMessage.textContent = error.message;
+        } finally { input.disabled = false; }
+      },
+    });
+    return h('label', { class: 'notification-choice' }, h('span', null, label), input);
+  });
 
   return shell(
     'settings',
@@ -2084,12 +2117,15 @@ async function profileView() {
         'section',
         { class: 'card pad stack' },
         h('h2', null, i18n.t('Уведомления')),
-        h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Push, когда агент сдал результат, ответил в вашей задаче или упомянул вас.')),
+        h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Выберите, о каких событиях получать push-уведомления.')),
         pushOn
           ? h('div', { class: 'row' }, h('span', { class: 'chip st-done' }, h('span', { class: 'dot' }), i18n.t('Включены на этом устройстве')), h('button', { onclick: run(() => pwa.testPush(api).then(() => toast(i18n.t('Тестовое уведомление отправлено. Проверьте уведомления устройства.')))) }, i18n.t('Отправить тест')), h('button', { onclick: run(() => pwa.disablePush(api)) }, i18n.t('Выключить')))
           : pushBlock
             ? h('div', { class: 'muted small' }, pushBlock)
             : h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.enablePush(api)) }, i18n.t('Включить уведомления'))),
+        notificationPreferences
+          ? h('div', { class: 'notification-choices' }, notificationChoices, notificationMessage)
+          : h('p', { class: 'error small', role: 'alert' }, i18n.t('Не удалось загрузить настройки уведомлений. Проверьте сеть и обновите экран.')),
       ),
       h('section', {class:'card pad stack about-app'},
         h('h2',null,i18n.t('О приложении')),

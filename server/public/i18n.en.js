@@ -1,5 +1,17 @@
 // English interface catalogue. Russian source phrases are stable message keys.
 export default {
+  'Применяется ко всем устройствам аккаунта. События остаются во входящих.': 'Applies to all devices on your account. Events remain in your inbox.',
+  'Результаты работы': 'Work results',
+  'Комментарии и упоминания': 'Comments and mentions',
+  'Изменения статуса': 'Status changes',
+  'Назначение исполнителя': 'Assignee changes',
+  'Новые задачи': 'New tasks',
+  'Приложенные файлы': 'Attached files',
+  'Другие события задачи': 'Other task activity',
+  'Сохраняем…': 'Saving…',
+  'Настройки уведомлений сохранены': 'Notification preferences saved',
+  'Выберите, о каких событиях получать push-уведомления.': 'Choose which events send push notifications.',
+  'Не удалось загрузить настройки уведомлений. Проверьте сеть и обновите экран.': 'Could not load notification preferences. Check your connection and refresh this screen.',
   'Потяните для обновления': 'Pull to refresh',
   'Отпустите для обновления': 'Release to refresh',
   'Обновляем…': 'Refreshing…',
