@@ -37,7 +37,25 @@ const GROUPS = {
 
 const state = { me: null, accounts: [], inboxCount: 0, poll: null, config: null };
 const app = document.getElementById('app');
+const splash = document.querySelector('.boot-splash');
+// Keep the initial frame above the first mounted view until that view is ready.
+if (splash) document.body.append(splash);
 let booting = true;
+
+function finishSplash() {
+  if (!splash?.isConnected || splash.classList.contains('is-leaving')) return;
+  splash.setAttribute('aria-busy', 'false');
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || document.hidden) {
+    splash.remove();
+    return;
+  }
+  splash.classList.add('is-leaving');
+  const onEnd = (event) => { if (event.target === splash) cleanup(); };
+  const cleanup = () => { clearTimeout(fallback); splash.removeEventListener('animationend', onEnd); splash.remove(); };
+  splash.addEventListener('animationend', onEnd);
+  // Also clean up when a browser suspends animation events during app switching.
+  const fallback = setTimeout(cleanup, 700);
+}
 
 // ---------- helpers ----------
 
@@ -738,9 +756,10 @@ async function tasksView(context) {
   });
   let debounce;
 
-  load();
+  const firstLoad = load();
   context.setPoll(load);
   const projects = await projectsPromise;
+  await firstLoad;
 
   return shell(
     'tasks',
@@ -2695,6 +2714,7 @@ async function boot() {
   }
   booting = false;
   await render();
+  finishSplash();
   const feedback = new URLSearchParams(location.search);
   if (feedback.has('auth_error') || feedback.has('auth')) {
     toast(feedback.get('auth_error') || (feedback.get('auth') === 'linked' ? i18n.t('Способ входа привязан') : i18n.t('Вы вошли в аккаунт')));
