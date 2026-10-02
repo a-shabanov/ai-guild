@@ -5,6 +5,9 @@ const SHELL = `shell-${VERSION}`;
 const API = `api-${VERSION}`; // last successful GET responses, for reading offline
 const FILES = `files-${VERSION}`; // image attachments
 const SHARE = 'share'; // payload handed over by the OS share sheet
+const PUSH_NAVIGATION = 'push-navigation';
+const PUSH_TARGET = '/__pending-push-navigation';
+const PUSH_TARGET_TTL = 2 * 60 * 1000;
 
 const SHELL_FILES = [
   '/',
@@ -37,7 +40,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
-      const keep = new Set([SHELL, API, FILES, SHARE]);
+      const keep = new Set([SHELL, API, FILES, SHARE, PUSH_NAVIGATION]);
       for (const name of await caches.keys()) if (!keep.has(name)) await caches.delete(name);
       await self.clients.claim();
     })(),
@@ -122,7 +125,7 @@ async function receiveShare(request) {
 }
 
 function dropPrivate() {
-  return Promise.all([caches.delete(API), caches.delete(FILES), caches.delete(SHARE)]);
+  return Promise.all([caches.delete(API), caches.delete(FILES), caches.delete(SHARE), caches.delete(PUSH_NAVIGATION)]);
 }
 
 self.addEventListener('fetch', (event) => {
@@ -157,6 +160,18 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'logout') event.waitUntil(dropPrivate());
+  if (event.data?.type === 'navigation-ready' || event.data?.type === 'navigation-ack') {
+    event.waitUntil((async () => {
+      const cache = await caches.open(PUSH_NAVIGATION);
+      const response = await cache.match(PUSH_TARGET);
+      if (!response) return;
+      const target = await response.json();
+      if (Date.now() - target.at > PUSH_TARGET_TTL) return void await cache.delete(PUSH_TARGET);
+      if (!event.source || (target.clientId && target.clientId !== event.source.id)) return;
+      if (event.data.type === 'navigation-ready') event.source.postMessage({ type: 'navigate', url: target.url });
+      else if (event.data.url === target.url) await cache.delete(PUSH_TARGET);
+    })());
+  }
 });
 
 self.addEventListener('push', (event) => {
@@ -185,17 +200,29 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   // Only same-origin paths: the payload must not be able to send the user elsewhere.
-  const target = new URL(event.notification.data?.url ?? '/', self.location.origin);
-  const url = target.origin === self.location.origin ? target.href : self.location.origin + '/';
+  let target;
+  try { target = new URL(event.notification.data?.url ?? '/#/inbox', self.location.origin); }
+  catch { target = new URL('/#/inbox', self.location.origin); }
+  const url = target.origin === self.location.origin ? target.href : self.location.origin + '/#/inbox';
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      const existing = windows[0];
+      const existing = windows.find((client) => client.visibilityState === 'visible') ?? windows[0];
+      const cache = await caches.open(PUSH_NAVIGATION);
+      // iOS can launch at start_url or reject focus on an inert WindowClient.
+      // Keep the intent until the app's listener is ready and acknowledges it.
+      await cache.put(PUSH_TARGET, new Response(JSON.stringify({ url, at: Date.now(), clientId: existing?.id ?? null })));
       if (existing) {
-        await existing.focus();
         existing.postMessage({ type: 'navigate', url });
+        try { await existing.focus(); }
+        catch {
+          await cache.put(PUSH_TARGET, new Response(JSON.stringify({ url, at: Date.now(), clientId: null })));
+          const opened = await self.clients.openWindow(url);
+          opened?.postMessage({ type: 'navigate', url });
+        }
       } else {
-        await self.clients.openWindow(url);
+        const opened = await self.clients.openWindow(url);
+        opened?.postMessage({ type: 'navigate', url });
       }
     })(),
   );

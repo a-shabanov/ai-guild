@@ -37,6 +37,7 @@ const GROUPS = {
 
 const state = { me: null, accounts: [], inboxCount: 0, poll: null, config: null };
 const app = document.getElementById('app');
+let booting = true;
 
 // ---------- helpers ----------
 
@@ -1044,6 +1045,8 @@ async function taskView(id, context) {
       h(
         'nav',
         { class: 'small crumbs', 'aria-label': i18n.t('Путь') },
+        taskBackLink(),
+        h('span', { class: 'muted', 'aria-hidden': 'true' }, ' · '),
         t.project ? h('a', { href: `#/projects/${encodeURIComponent(t.project)}` }, t.project) : h('a', { href: '#/tasks' }, i18n.t('Все задачи')),
         t.ancestors.map((p) => [h('span', { class: 'muted', 'aria-hidden': 'true' }, ' › '), h('a', { href: `#/tasks/${p.id}` }, `${LEVEL[p.level]} #${p.id} ${p.title}`)]),
       ),
@@ -1291,7 +1294,7 @@ async function taskView(id, context) {
   try {
     await load();
   } catch (ex) {
-    return shell('tasks', h('div', { class: 'empty error' }, ex.message), h('p', { style: 'text-align:center' }, h('a', { href: '#/tasks' }, i18n.t('← Все задачи'))));
+    return shell('tasks', h('div', { class: 'empty error' }, ex.message), h('p', { style: 'text-align:center' }, taskBackLink()));
   }
   context.setPoll(load);
 
@@ -2559,6 +2562,35 @@ function timelineFilters(projects, collapse, expand) {
 
 // ---------- router ----------
 
+function navigateToHash(hash) {
+  if (hash !== location.hash) {
+    history.pushState({ guildPrevious: location.hash || '#/projects' }, '', hash);
+  }
+  if (!booting) render({ reload: false });
+}
+
+function taskBackLink() {
+  const previous = history.state?.guildPrevious;
+  return h('a', { href: previous || '#/tasks', class: 'task-back', onclick: (event) => {
+    if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (previous) history.back();
+    else navigateToHash('#/tasks');
+  } }, i18n.t('← Назад'));
+}
+
+// Native fragment navigation may scroll before hashchange has saved the old view.
+// Own ordinary in-app links so the source position is captured before any DOM change.
+document.addEventListener('click', (event) => {
+  if (event.defaultPrevented || event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const link = event.target.closest?.('a[href]');
+  if (!link || link.target || link.hasAttribute('download')) return;
+  const url = new URL(link.href, location.href);
+  if (url.origin !== location.origin || url.pathname !== location.pathname || url.search !== location.search || !url.hash.startsWith('#/')) return;
+  event.preventDefault();
+  navigateToHash(url.hash);
+});
+
 const navigation = createNavigation({
   load: routeView,
   show: (view) => {
@@ -2581,7 +2613,7 @@ const navigation = createNavigation({
   },
   getScroll: () => window.scrollY,
   setScroll: (top) => window.scrollTo({ top, behavior: 'instant' }),
-  cacheable: (key) => /^#\/(projects|tasks|board|inbox|analytics|connect)\/?$/.test(key),
+  cacheable: (key) => /^#\/(projects|board|timeline)(\/.*)?$/.test(key) || /^#\/(tasks|inbox|analytics|connect)\/?$/.test(key),
 });
 
 async function routeView(key, context) {
@@ -2646,6 +2678,7 @@ function paintInboxCount() {
 }
 
 async function boot() {
+  booting = true;
   navigation.clear();
   const configPromise = state.config ? Promise.resolve(state.config) : fetch('/api/config').then((r) => r.json()).catch(() => null);
   try {
@@ -2660,6 +2693,7 @@ async function boot() {
   } catch {
     state.me = null;
   }
+  booting = false;
   await render();
   const feedback = new URLSearchParams(location.search);
   if (feedback.has('auth_error') || feedback.has('auth')) {
@@ -2673,7 +2707,7 @@ async function boot() {
 }
 
 pwa.registerServiceWorker((url) => {
-  location.hash = new URL(url).hash || '#/inbox';
+  navigateToHash(new URL(url).hash || '#/inbox');
 });
 pwa.onInstallChange(() => /^#\/(profile|settings)/.test(location.hash) && render());
 addEventListener('online', () => {
@@ -2681,7 +2715,7 @@ addEventListener('online', () => {
   state.poll?.().catch(() => {});
 });
 
-addEventListener('hashchange', () => render({ reload: false }));
+addEventListener('hashchange', () => { if (!booting) render({ reload: false }); });
 // Browser Back/Forward must not fight the saved scroll position of each tab.
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 setInterval(() => {

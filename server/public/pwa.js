@@ -146,11 +146,23 @@ export function biometryName() {
 
 export async function registerServiceWorker(onNavigate) {
   if (!('serviceWorker' in navigator)) return;
+  let worker;
   navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data?.type === 'navigate') onNavigate(event.data.url);
+    if (event.data?.type !== 'navigate') return;
+    let url;
+    try { url = new URL(event.data.url, location.origin); } catch { return; }
+    if (url.origin !== location.origin || !url.hash.startsWith('#/')) return;
+    onNavigate(url.href);
+    (event.source ?? worker)?.postMessage({ type: 'navigation-ack', url: url.href });
   });
+  const ready = () => (navigator.serviceWorker.controller ?? worker)?.postMessage({ type: 'navigation-ready' });
+  navigator.serviceWorker.addEventListener('controllerchange', ready);
+  addEventListener('pageshow', ready);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) ready(); });
   try {
-    await navigator.serviceWorker.register('/sw.js');
+    const registration = await navigator.serviceWorker.register('/sw.js');
+    worker = registration.active ?? (await navigator.serviceWorker.ready).active;
+    ready();
   } catch (err) {
     console.warn('service worker registration failed', err);
   }
