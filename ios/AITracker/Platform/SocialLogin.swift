@@ -16,7 +16,6 @@ struct SignInProviders: Codable {
 }
 
 private struct SocialStart: Codable { let authorizationUrl: String }
-private struct SocialExchange: Codable { let sessionToken: String?; let ok: Bool? }
 
 /// ASWebAuthenticationSession opens the provider in a system browser. A one-use code,
 /// bound to a verifier held by this app, returns instead of a session token in a URL.
@@ -25,7 +24,7 @@ final class SocialLogin: NSObject, ASWebAuthenticationPresentationContextProvidi
     static let shared = SocialLogin()
     private var session: ASWebAuthenticationSession?
 
-    func authorize(provider: String, client: APIClient, linking: Bool = false) async throws -> String? {
+    func authorize(provider: String, client: APIClient, linking: Bool = false) async throws -> SessionResponse {
         guard session == nil else { throw APIError.server("Вход уже выполняется") }
         var bytes = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else {
@@ -60,13 +59,13 @@ final class SocialLogin: NSObject, ASWebAuthenticationPresentationContextProvidi
               let parts = URLComponents(url: callback, resolvingAgainstBaseURL: false) else { throw APIError.badURL }
         if let error = parts.queryItems?.first(where: { $0.name == "error" })?.value { throw APIError.server(error) }
         guard let code = parts.queryItems?.first(where: { $0.name == "code" })?.value else { throw APIError.badURL }
-        let result: SocialExchange = try await client.send("POST", "/api/auth/exchange", body: [
+        let result: SessionResponse = try await client.send("POST", "/api/auth/exchange", body: [
             "code": .string(code), "code_verifier": .string(verifier),
         ])
         if linking {
             guard result.ok == true else { throw APIError.server("Не удалось привязать аккаунт") }
-        } else if result.sessionToken == nil { throw APIError.server("Не удалось получить сессию") }
-        return result.sessionToken
+        } else if result.sessionToken == nil && result.twoFactorRequired != true { throw APIError.server("Не удалось получить сессию") }
+        return result
     }
 
     private static func base64url(_ data: Data) -> String {

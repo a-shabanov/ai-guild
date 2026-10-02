@@ -16,10 +16,22 @@ type Op = {
 const WithKey = z.object({ account: S.Account, key: z.string() });
 
 const ops: Op[] = [
+  {method:'get',path:'/api/devices',summary:'Your active devices; installation metadata is descriptive, not authentication',response:z.array(S.AccountDevice)},
+  {method:'patch',path:'/api/devices/{id}',summary:'Rename your device',body:S.RenameDevice,response:z.object({id:z.number(),name:z.string()})},
+  {method:'delete',path:'/api/devices/{id}',summary:'Revoke all sessions and linked notification subscriptions of your device',response:z.object({ok:z.boolean()})},
+  {method:'get',path:'/api/auth/2fa/pending',summary:'Inspect pending sign-in using HttpOnly cookie or X-2FA-Challenge',public:true},
+  {method:'delete',path:'/api/auth/2fa/pending',summary:'Cancel pending sign-in',public:true},
+  {method:'post',path:'/api/auth/2fa/send',summary:'Send a second-step code to an enrolled channel',body:S.TwoFactorSend,public:true},
+  {method:'post',path:'/api/auth/2fa/verify',summary:'Consume the code and create a full session',body:S.TwoFactorVerify,public:true},
+  {method:'get',path:'/api/auth/2fa/settings',summary:'List your second-step channels'},
+  {method:'post',path:'/api/auth/2fa/enroll',summary:'Send enrollment code; recent session required',body:S.TwoFactorEnroll},
+  {method:'post',path:'/api/auth/2fa/enroll/verify',summary:'Confirm channel and revoke other sessions',body:S.TwoFactorEnrollmentVerify},
+  {method:'delete',path:'/api/auth/2fa/settings/{channel}',summary:'Remove channel; recent confirmation required'},
+  {method:'post',path:'/api/accounts/{id}/reset-2fa',summary:'Reset second-step channels and revoke all sessions',admin:true},
   { method: 'post', path: '/api/accounts/{id}/invitation', summary: 'Issue a one-use invitation; replaces the previous link', response: S.AccountInvitation, admin: true },
   { method: 'post', path: '/api/auth/invitations/inspect', summary: 'Inspect an unused invitation', body: S.InvitationToken, response: z.object({ name: z.string(), expires_at: z.string().describe('ISO 8601 timestamp') }), public: true },
   { method: 'post', path: '/api/auth/{provider}/start', summary: 'Start OAuth login, authenticated linking, or invitation redemption', body: S.AuthStart, response: z.object({ authorization_url: z.string() }), public: true },
-  { method: 'post', path: '/api/auth/exchange', summary: 'Redeem a one-use native code with its PKCE verifier', body: S.AuthExchange, response: z.union([z.object({ session_token: z.string() }), z.object({ ok: z.boolean() })]), public: true },
+  { method: 'post', path: '/api/auth/exchange', summary: 'Redeem a native code; returns session or second-step challenge', body: S.AuthExchange, response: z.union([z.object({ session_token: z.string() }), z.object({ ok: z.boolean() }),z.object({two_factor_required:z.literal(true),challenge_token:S.AuthToken,methods:z.array(z.object({channel:S.TwoFactorChannel,masked:z.string(),available:z.boolean()})),expires_at:z.string()})]), public: true },
   { method: 'get', path: '/api/auth/identities', summary: 'List your linked sign-in providers', response: z.array(S.AuthIdentity) },
   { method: 'delete', path: '/api/auth/identities/{provider}', summary: 'Unlink a provider and revoke its sessions', response: z.object({ ok: z.boolean() }) },
   { method: 'get', path: '/api/me', summary: 'Current account', response: S.Account },
@@ -69,6 +81,7 @@ export function buildOpenApi(): object {
     if (op.path.includes('{provider}')) {
       parameters.push({ name: 'provider', in: 'path', required: true, schema: { type: 'string', enum: ['google', 'telegram'] } });
     }
+    if(op.path.includes('{channel}'))parameters.push({name:'channel',in:'path',required:true,schema:{type:'string',enum:['email','telegram']}});
     if (op.query) {
       const qs = json(op.query, 'input') as any;
       for (const [name, schema] of Object.entries<any>(qs.properties ?? {})) {

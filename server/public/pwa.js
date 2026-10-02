@@ -1,4 +1,5 @@
 import * as i18n from './i18n.js';
+import { classifyClient } from './client-device.js';
 // Platform features of the installed app: passkeys, service worker, push, install, offline outbox.
 
 // ---------- passkeys (WebAuthn) ----------
@@ -111,6 +112,26 @@ export function deviceName() {
   if (/Android/.test(ua)) return 'Android';
   if (/Windows/.test(ua)) return 'Windows';
   return i18n.t('Это устройство');
+}
+
+// Random installation id, scoped to this site's storage; never a hardware fingerprint.
+let installationId;
+export function clientDescriptor({userAgent=navigator.userAgent,touchPoints=navigator.maxTouchPoints,
+  standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}={}) {
+  return classifyClient({userAgent,touchPoints,standalone});
+}
+export function clientHeaders() {
+  if(!installationId){
+    try{installationId=localStorage.getItem('ai-guild-device-id');}catch{}
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(installationId??'')){
+      const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+      const hex=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+      installationId=`${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+      try{localStorage.setItem('ai-guild-device-id',installationId);}catch{}
+    }
+  }
+  const client=clientDescriptor();
+  return {'X-Device-Id':installationId,'X-Client-Type':client.client_type,'X-Client-Platform':client.platform};
 }
 
 /** What the device calls its biometric check, for button labels. */

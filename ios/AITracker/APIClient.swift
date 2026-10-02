@@ -23,6 +23,12 @@ struct UploadFile {
 }
 
 struct APIClient: Sendable {
+    private static let installationID: String = {
+        if let existing = UserDefaults.standard.string(forKey: "aiGuildDeviceID"), UUID(uuidString: existing) != nil { return existing }
+        let value = UUID().uuidString
+        UserDefaults.standard.set(value, forKey: "aiGuildDeviceID")
+        return value
+    }()
     let baseURL: URL
     /// Session token or API key; empty for the calls made before signing in.
     let key: String
@@ -58,6 +64,9 @@ struct APIClient: Sendable {
     private func request(_ method: String, _ path: String, query: [URLQueryItem] = []) throws -> URLRequest {
         var req = URLRequest(url: try url(path, query: query))
         req.httpMethod = method
+        req.setValue(Self.installationID, forHTTPHeaderField: "X-Device-Id")
+        req.setValue("ios", forHTTPHeaderField: "X-Client-Type")
+        req.setValue("ios", forHTTPHeaderField: "X-Client-Platform")
         if !key.isEmpty { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
         return req
     }
@@ -75,15 +84,16 @@ struct APIClient: Sendable {
 
     /// Reads fall back to the last saved answer when the server cannot be reached.
     func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
+        let cacheable = !path.hasPrefix("/api/devices")
         let req = try request("GET", path, query: query)
         do {
             let data = try await perform(req)
             let value = try Self.decoder.decode(T.self, from: data)
-            if let url = req.url { ResponseCache.write(data, for: url) }
+            if cacheable, let url = req.url { ResponseCache.write(data, for: url) }
             await Connectivity.shared.set(offline: false)
             return value
         } catch where error.isConnectivity {
-            guard let url = req.url, let cached = ResponseCache.read(url),
+            guard cacheable, let url = req.url, let cached = ResponseCache.read(url),
                   let value = try? Self.decoder.decode(T.self, from: cached) else {
                 throw APIError.offline
             }
@@ -131,7 +141,55 @@ struct OK: Codable {
 }
 
 struct SessionResponse: Codable {
-    let sessionToken: String
+    let sessionToken: String?
+    let twoFactorRequired: Bool?
+    let challengeToken: String?
+    let methods: [TwoFactorMethod]?
+    let ok: Bool?
+}
+
+struct TwoFactorMethod: Codable, Identifiable {
+    var id: String { channel }
+    let channel: String
+    let masked: String
+    let available: Bool
+    var title: String { channel == "email" ? "Email" : "Telegram" }
+}
+struct TwoFactorAvailability: Codable {
+    let email: Bool
+    let telegram: Bool
+    func enabled(_ channel: String) -> Bool { channel == "email" ? email : telegram }
+}
+struct TwoFactorSettings: Codable {
+    let enabled: Bool
+    let methods: [TwoFactorMethod]
+    let available: TwoFactorAvailability
+}
+struct AccountDevice: Codable, Identifiable {
+    let id: Int
+    let name: String
+    let clientType: String
+    let platform: String
+    let createdAt: Date
+    let lastUsedAt: Date
+    let sessions: Int
+    let current: Bool
+    let signInMethods: [String]
+    var clientLabel: String {
+        switch clientType {
+        case "desktop_browser": "Браузер на компьютере"
+        case "mobile_browser": "Мобильный браузер"
+        case "desktop_pwa": "PWA на компьютере"
+        case "mobile_pwa": "Мобильная PWA"
+        case "ios": "Приложение iOS"
+        default: "Устройство"
+        }
+    }
+}
+struct TwoFactorSent: Codable {
+    let enrollmentToken: String?
+    let masked: String
+    let resendAfter: Int
 }
 
 struct ServerConfig: Codable {

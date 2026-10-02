@@ -77,7 +77,7 @@ final class Passkeys: NSObject, ASAuthorizationControllerDelegate,
     }
 
     /// - Returns: a session token for the account the passkey belongs to.
-    func signIn(server: URL) async throws -> String {
+    func signIn(server: URL) async throws -> SessionResponse {
         guard let domain = Self.domain else { throw APIError.server("Passkeys не настроены") }
         let client = APIClient(baseURL: server, key: "")
         let start: PasskeyChallenge = try await client.send("POST", "/api/passkeys/login/options")
@@ -107,7 +107,7 @@ final class Passkeys: NSObject, ASAuthorizationControllerDelegate,
                 ]),
             ]),
         ])
-        return session.sessionToken
+        return session
     }
 
     func register(with client: APIClient, name: String) async throws {

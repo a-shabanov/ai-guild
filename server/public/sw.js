@@ -1,6 +1,6 @@
 // AI Guild service worker: offline shell, cached reads, push notifications, share target.
 // Bump VERSION when the caching rules change; shell files themselves refresh on every visit.
-const VERSION = 'v9';
+const VERSION = 'v10';
 const SHELL = `shell-${VERSION}`;
 const API = `api-${VERSION}`; // last successful GET responses, for reading offline
 const FILES = `files-${VERSION}`; // image attachments
@@ -11,6 +11,7 @@ const SHELL_FILES = [
   '/style.css',
   '/app.js',
   '/pwa.js',
+  '/client-device.js',
   '/i18n.js',
   '/i18n.en.js',
   '/manifest.webmanifest',
@@ -125,6 +126,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   if (url.pathname === '/mcp' || url.pathname === '/healthz') return;
   if (url.pathname.startsWith('/api/auth/')) return;
+  if (url.pathname === '/api/devices' || url.pathname.startsWith('/api/devices/')) return;
 
   if (/^\/api\/attachments\/\d+\/content$/.test(url.pathname)) {
     // Video seeks with Range requests; those go straight to the network.

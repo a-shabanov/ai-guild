@@ -158,5 +158,6 @@ export async function verifyLogin(input: { challenge_id: string; response: any }
     kind: row.kind,
     system: row.system,
     role: row.role,
+    passkeyId: row.id,
   };
 }

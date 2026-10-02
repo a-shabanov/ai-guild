@@ -32,6 +32,15 @@ export const config = {
     rpName: 'AI Guild',
   },
   sessionDays: Number(process.env.SESSION_DAYS ?? 90),
+  twoFactor: {
+    secret: process.env.TWO_FACTOR_SECRET ?? '',
+    smtpHost: process.env.SMTP_HOST ?? '',
+    smtpPort: Number(process.env.SMTP_PORT ?? 587),
+    smtpUser: process.env.SMTP_USER ?? '',
+    smtpPassword: process.env.SMTP_PASSWORD ?? '',
+    emailFrom: process.env.EMAIL_FROM ?? '',
+    telegramGatewayToken: process.env.TELEGRAM_GATEWAY_TOKEN ?? '',
+  },
   socialAuth: {
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID ?? '',

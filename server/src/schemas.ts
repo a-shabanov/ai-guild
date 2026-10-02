@@ -75,6 +75,19 @@ export const UpdateAccount = z.object({
 });
 
 export const AuthProvider = z.enum(['google', 'telegram']);
+export const ClientType = z.enum(['desktop_browser','mobile_browser','desktop_pwa','mobile_pwa','ios']);
+export const DevicePlatform = z.enum(['macos','windows','linux','ios','android','unknown']);
+export const DeviceInput = z.object({installation_id:z.uuid(),client_type:ClientType,platform:DevicePlatform});
+export type DeviceRegistration = z.infer<typeof DeviceInput>;
+export const RenameDevice = z.object({name:z.string().trim().min(1).max(80).regex(/^[^\x00-\x1f\x7f]+$/)});
+export const AccountDevice = z.object({id:z.number(),name:z.string(),client_type:ClientType,platform:DevicePlatform,
+  created_at:z.string(),last_used_at:z.string(),sessions:z.number(),current:z.boolean(),sign_in_methods:z.array(z.enum(['key','passkey','google','telegram']))});
+export const TwoFactorChannel = z.enum(['email','telegram']);
+export const TwoFactorCode = z.string().regex(/^\d{6}$/);
+export const TwoFactorSend = z.object({channel:TwoFactorChannel,challenge_token:z.string().optional()});
+export const TwoFactorVerify = z.object({code:TwoFactorCode,challenge_token:z.string().optional()});
+export const TwoFactorEnroll = z.object({channel:TwoFactorChannel,email:z.string().trim().email().max(254).optional(),phone:z.string().trim().regex(/^\+[1-9]\d{7,14}$/).optional()});
+export const TwoFactorEnrollmentVerify = z.object({enrollment_token:z.string().regex(/^[A-Za-z0-9_-]{43}$/),code:TwoFactorCode});
 export const AuthToken = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 export const AuthStart = z.object({
   intent: z.enum(['login', 'link']).default('login'),

@@ -11,12 +11,16 @@ import * as push from './push.ts';
 import * as S from './schemas.ts';
 import * as svc from './service.ts';
 import * as social from './social-auth.ts';
+import * as twoFactor from './two-factor.ts';
+import * as devices from './devices.ts';
 
 export const SESSION_COOKIE = 'ait_session';
+const TWO_FACTOR_COOKIE = 'ait_two_factor';
 
 declare module 'express-serve-static-core' {
   interface Request {
     actor: Actor;
+    deviceId?: number;
   }
 }
 
@@ -73,6 +77,7 @@ export function keyFromRequest(req: Request): string | undefined {
 
 export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   req.actor = await authenticate(keyFromRequest(req));
+  req.deviceId = await devices.associate(req.actor,keyFromRequest(req),devices.fromHeaders(req.headers),req.headers['user-agent']);
   // Set by the history importer, so hundreds of old events do not land in inboxes.
   if (req.headers['x-tracker-history'] === '1') req.actor.history = true;
   next();
@@ -143,6 +148,7 @@ export function restRouter(): Router {
     res.json({
       passkeys: { rp_id: config.webauthn.rpId, origins: config.webauthn.origins },
       providers: { google: social.configured('google'), telegram: social.configured('telegram') },
+      two_factor: twoFactor.available(),
       apns: apnsConfigured(),
       version: config.version,
       build: config.build,
@@ -155,23 +161,44 @@ export function restRouter(): Router {
 
   // Browser session: an opaque token in an HttpOnly cookie, so <img>/<video> can load
   // attachments and the API key never stays in the browser.
-  const startSession = async (req: Request, res: Response, actor: Actor, method: SessionMethod) => {
-    const token = await createSession(actor.id, method, req.headers['user-agent']);
+  const gate = async (req: Request, res: Response, actor: Actor, method: SessionMethod, identityId?: number, key?: string) => {
+    const challenge = await twoFactor.beginLogin(actor, method, identityId, key);
+    if (challenge) {
+      res.clearCookie(SESSION_COOKIE, { path: '/' });
+      res.cookie(TWO_FACTOR_COOKIE, challenge.challenge_token, { httpOnly: true, sameSite: 'strict',
+        secure: req.secure || config.publicUrl.startsWith('https:'), path: '/api/auth/2fa', maxAge:10*60_000 });
+    }
+    return challenge;
+  };
+  const startSession = async (req: Request, res: Response, actor: Actor, method: SessionMethod, identityId?: number, key?: string) => {
+    const native = !req.headers.origin && !req.headers['sec-fetch-site'];
+    const challenge = await gate(req,res,actor,method,identityId,key);
+    res.set('Cache-Control','no-store');
+    if (challenge) {
+      const {challenge_token,...details}=challenge;
+      return void res.json(native ? challenge : details);
+    }
+    const token = await createSession(actor.id, method, req.headers['user-agent'],identityId);
     setSessionCookie(req, res, token);
     // Native apps cannot use the cookie jar reliably, so they get the token itself. Browsers
     // always send Origin on POST, which keeps the token away from page scripts.
-    const native = !req.headers.origin && !req.headers['sec-fetch-site'];
-    res.json(native ? { ...actor, session_token: token } : actor);
+    const {passkeyId,...account}=actor;
+    res.json(native ? { ...account, session_token: token } : account);
   };
 
   r.post('/session', jsonBody, async (req, res) => {
+    sameOrigin(req);
     const { key } = parse(z.object({ key: z.string() }), req.body);
-    await startSession(req, res, await authenticate(key.trim()), 'key');
+    await startSession(req, res, await authenticate(key.trim(),true), 'key',undefined,key.trim());
   });
   r.delete('/session', async (req, res) => {
+    sameOrigin(req);
     await destroySession(readCookie(req, SESSION_COOKIE));
     await destroySession(keyFromRequest(req));
     res.clearCookie(SESSION_COOKIE, { path: '/' });
+    const pendingToken=readCookie(req,TWO_FACTOR_COOKIE);
+    if(pendingToken) await twoFactor.cancel(pendingToken);
+    res.clearCookie(TWO_FACTOR_COOKIE,{path:'/api/auth/2fa'});
     res.json({ ok: true });
   });
 
@@ -179,12 +206,32 @@ export function restRouter(): Router {
     res.json(await passkeys.loginOptions());
   });
   r.post('/passkeys/login/verify', jsonBody, async (req, res) => {
+    sameOrigin(req);
     const actor = await passkeys.verifyLogin(parse(S.PasskeyResponse, req.body));
     await startSession(req, res, actor, 'passkey');
   });
 
   // No OAuth response, invitation or linked identity is eligible for offline caching.
   r.use('/auth', (_req, res, next) => { res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); next(); });
+
+  const challengeToken = (req:Request) => parse(S.AuthToken,req.body?.challenge_token ?? req.headers['x-2fa-challenge'] ?? readCookie(req,TWO_FACTOR_COOKIE));
+  r.get('/auth/2fa/pending', async(req,res)=>{res.json(await twoFactor.pending(challengeToken(req)));});
+  r.post('/auth/2fa/send',jsonBody,async(req,res)=>{
+    sameOrigin(req); const {channel}=parse(S.TwoFactorSend,req.body);
+    res.json(await twoFactor.sendLogin(challengeToken(req),channel));
+  });
+  r.post('/auth/2fa/verify',jsonBody,async(req,res)=>{
+    sameOrigin(req); const {code}=parse(S.TwoFactorVerify,req.body);
+    const result=await twoFactor.verifyLogin(challengeToken(req),code,req.headers['user-agent']);
+    res.clearCookie(TWO_FACTOR_COOKIE,{path:'/api/auth/2fa'});
+    setSessionCookie(req,res,result.session);
+    const native=!req.headers.origin&&!req.headers['sec-fetch-site'];
+    res.json(native?{...result.actor,session_token:result.session}:result.actor);
+  });
+  r.delete('/auth/2fa/pending',jsonBody,async(req,res)=>{
+    sameOrigin(req); await twoFactor.cancel(challengeToken(req));
+    res.clearCookie(TWO_FACTOR_COOKIE,{path:'/api/auth/2fa'}); res.json({ok:true});
+  });
   const opaque = S.AuthToken;
   r.post('/auth/invitations/inspect', jsonBody, async (req, res) => {
     const { token } = parse(S.InvitationToken, req.body);
@@ -224,7 +271,13 @@ export function restRouter(): Router {
         const code = await social.nativeResult(actor, provider, flow, identityId);
         return void res.redirect(303, `aitracker://auth?code=${code}`);
       }
-      if (!flow.account_id || flow.invitation_id) setSessionCookie(req, res, await createSession(actor.id, provider, req.headers['user-agent'], identityId));
+      if (!flow.account_id || flow.invitation_id) {
+        if (await gate(req,res,actor,provider,identityId)) {
+          res.clearCookie(`${flowCookie(provider)}_invite`, {path:'/api/auth'});
+          return void res.redirect(303,'/#/two-factor');
+        }
+        setSessionCookie(req, res, await createSession(actor.id, provider, req.headers['user-agent'], identityId));
+      }
       res.clearCookie(`${flowCookie(provider)}_invite`, { path: '/api/auth' });
       res.redirect(303, flow.account_id ? '/?auth=linked#/profile' : '/?auth=signed-in#/projects');
     } catch (error) {
@@ -248,12 +301,40 @@ export function restRouter(): Router {
     const result = await social.exchange(code, code_verifier);
     if (result.linking) res.json({ ok: true });
     else {
-      const token = await createSession(result.actor.id, result.provider, req.headers['user-agent'], result.identityId);
-      res.json({ ...result.actor, session_token: token });
+      await startSession(req,res,result.actor,result.provider,result.identityId);
     }
   });
 
   r.use(requireAuth);
+
+  r.use('/devices',(_req,res,next)=>{res.set('Cache-Control','no-store');next();});
+  r.get('/devices',async(req,res)=>{res.json(await devices.list(req.actor,keyFromRequest(req)));});
+  r.patch('/devices/:id',jsonBody,async(req,res)=>{
+    sameOrigin(req);const {name}=parse(S.RenameDevice,req.body);
+    res.json(await devices.rename(req.actor,keyFromRequest(req),id(req),name));
+  });
+  r.delete('/devices/:id',async(req,res)=>{
+    sameOrigin(req);const deviceId=id(req);
+    const result=await devices.revoke(req.actor,keyFromRequest(req),deviceId);
+    if(req.deviceId===deviceId)res.clearCookie(SESSION_COOKIE,{path:'/'});
+    res.json(result);
+  });
+
+  r.get('/auth/2fa/settings',async(req,res)=>{res.json(await twoFactor.settings(req.actor));});
+  r.post('/auth/2fa/enroll',jsonBody,async(req,res)=>{
+    sameOrigin(req);const input=parse(S.TwoFactorEnroll,req.body);
+    res.json(await twoFactor.enroll(req.actor,keyFromRequest(req)!,input.channel,input.email,input.phone));
+  });
+  r.post('/auth/2fa/enroll/verify',jsonBody,async(req,res)=>{
+    sameOrigin(req);const input=parse(S.TwoFactorEnrollmentVerify,req.body);
+    res.json(await twoFactor.confirmEnrollment(req.actor,keyFromRequest(req)!,input.enrollment_token,input.code));
+  });
+  r.delete('/auth/2fa/settings/:channel',async(req,res)=>{
+    sameOrigin(req);res.json(await twoFactor.remove(req.actor,keyFromRequest(req)!,parse(S.TwoFactorChannel,req.params.channel)));
+  });
+  r.post('/accounts/:id/reset-2fa',async(req,res)=>{
+    sameOrigin(req);res.json(await twoFactor.reset(req.actor,keyFromRequest(req)!,id(req)));
+  });
 
   r.get('/auth/identities', async (req, res) => { res.json(await social.listIdentities(req.actor)); });
   r.delete('/auth/identities/:provider', async (req, res) => {
@@ -369,7 +450,7 @@ export function restRouter(): Router {
     res.json({ key: await push.publicKey() });
   });
   r.post('/push/subscriptions', jsonBody, async (req, res) => {
-    await push.subscribe(req.actor, parse(S.PushSubscription, req.body), req.headers['user-agent']);
+    await push.subscribe(req.actor, parse(S.PushSubscription, req.body), req.headers['user-agent'],req.deviceId);
     res.status(201).json({ ok: true });
   });
   r.delete('/push/subscriptions', jsonBody, async (req, res) => {
@@ -379,7 +460,7 @@ export function restRouter(): Router {
 
   r.post('/push/apns', jsonBody, async (req, res) => {
     const { token, environment } = parse(S.ApnsDevice, req.body);
-    await push.registerApnsDevice(req.actor, token, environment);
+    await push.registerApnsDevice(req.actor, token, environment,req.deviceId);
     res.status(201).json({ ok: true });
   });
   r.delete('/push/apns', jsonBody, async (req, res) => {

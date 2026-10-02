@@ -62,7 +62,7 @@ async function api(method, path, body) {
   try {
     res = await fetch('/api' + path, {
       method,
-      headers: body && !isForm ? { 'Content-Type': 'application/json' } : undefined,
+      headers: {...pwa.clientHeaders(),...(body && !isForm ? { 'Content-Type': 'application/json' } : {})},
       body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
     });
   } catch {
@@ -486,8 +486,7 @@ function loginView() {
     err.textContent = '';
     e.currentTarget.disabled = true;
     try {
-      await pwa.passkeySignIn(api);
-      await boot();
+      await acceptSignIn(await pwa.passkeySignIn(api));
     } catch (ex) {
       err.textContent = ex.message === 'passkey sign-in failed' ? i18n.t('Этот passkey не подходит') : ex.message;
       e.target.disabled = false;
@@ -504,9 +503,9 @@ function loginView() {
           e.preventDefault();
           err.textContent = '';
           try {
-            await api('POST', '/session', { key: input.value });
+            const result = await api('POST', '/session', { key: input.value });
             state.signedInWithKey = true;
-            await boot();
+            await acceptSignIn(result);
           } catch (ex) {
             err.textContent =
               ex.message === 'invalid API key'
@@ -534,6 +533,87 @@ function loginView() {
 }
 
 const providerLabels = { google: 'Google', telegram: 'Telegram' };
+const factorLabels = { email: 'Email', telegram: 'Telegram' };
+async function acceptSignIn(result) {
+  if (result.two_factor_required) {
+    state.me = null;
+    location.hash = '#/two-factor';
+    await render();
+  } else await boot();
+}
+
+async function twoFactorView() {
+  const err = h('div', { class: 'error small', role: 'alert' });
+  const back = async () => {
+    await api('DELETE', '/auth/2fa/pending').catch(() => {});
+    location.hash = '#/';
+    await boot();
+  };
+  let pending;
+  try { pending = await api('GET', '/auth/2fa/pending'); }
+  catch (error) { return h('main', null, h('section', {class:'card pad stack login'},
+    h('h1', null, i18n.t('Войдите снова')), h('p', null, error.message), h('button', {onclick:back}, i18n.t('Вернуться ко входу')))); }
+  const code = h('input', { type:'text', inputmode:'numeric', autocomplete:'one-time-code', pattern:'[0-9]{6}', maxlength:6, required:true, placeholder:'000000', 'aria-label':i18n.t('Код подтверждения') });
+  const hint = h('p', {class:'muted small',role:'status'}, i18n.t('Выберите, куда отправить код.'));
+  const submit = h('button', {class:'primary big',disabled:true}, i18n.t('Подтвердить вход'));
+  const buttons = pending.methods.map(method => h('button', {type:'button',disabled:!method.available,
+    onclick: async e => {
+      const button=e.currentTarget; err.textContent=''; button.disabled=true;
+      try {
+        const result=await api('POST','/auth/2fa/send',{channel:method.channel});
+        hint.textContent=i18n.t`Код отправлен: ${result.masked}. Действует 5 минут.`;
+        submit.disabled=false; code.focus();
+        for(const b of buttons)b.disabled=true;
+        let remaining=60;
+        state.twoFactorTicker=setInterval(()=>{
+          hint.textContent=i18n.t`Код отправлен: ${result.masked}. Повторная отправка через ${--remaining} с.`;
+          if(remaining<=0){clearInterval(state.twoFactorTicker); for(let i=0;i<buttons.length;i++)buttons[i].disabled=!pending.methods[i].available; hint.textContent=i18n.t('Код действует 5 минут. Можно отправить новый.');}
+        },1000);
+      } catch(error){err.textContent=error.message;button.disabled=false;}
+    },
+  }, method.channel === 'telegram' ? method.masked : `${factorLabels[method.channel]} · ${method.masked}`));
+  return h('main', null, h('form', {class:'card pad stack login',onsubmit:async e=>{
+    e.preventDefault();err.textContent='';submit.disabled=true;
+    try {await api('POST','/auth/2fa/verify',{code:code.value});location.hash='#/projects';await boot();}
+    catch(error){err.textContent=error.message;submit.disabled=false;}
+  }}, h('h1',null,i18n.t('Подтвердите вход')), h('p',{class:'muted',style:'margin:0'},i18n.t('Первый шаг пройден. Теперь введите одноразовый код.')),
+    ...buttons, pending.methods.every(m=>!m.available)&&h('p',{class:'error small'},i18n.t('Отправка кодов недоступна. Обратитесь к администратору для восстановления доступа.')),
+    hint,h('label',{class:'field'},i18n.t('Код из шести цифр'),code),err,submit,
+    h('button',{type:'button',class:'ghost',onclick:back},i18n.t('Другой аккаунт'))));
+}
+
+function enrollTwoFactor(channel) {
+  dialog(i18n.t`Подключить ${factorLabels[channel]} для 2FA`, (form, {close,err})=>{
+    const email=h('input',{type:'email',autocomplete:'email',required:channel==='email',placeholder:'you@example.com'});
+    const phone=h('input',{type:'tel',autocomplete:'tel',required:channel==='telegram',placeholder:'+79991234567',pattern:'\\+[1-9][0-9]{7,14}'});
+    const code=h('input',{inputmode:'numeric',autocomplete:'one-time-code',pattern:'[0-9]{6}',maxlength:6,placeholder:'000000','aria-label':i18n.t('Код подтверждения канала')});
+    const codeLabel=h('label',{class:'field',hidden:true},i18n.t('Код подтверждения'),code);
+    const status=h('p',{class:'muted small',role:'status'});
+    const send=h('button',{type:'button',onclick:async e=>{
+      err.textContent='';e.currentTarget.disabled=true;
+      try{
+        const field=channel==='email'?email:phone;if(!field.reportValidity()){send.disabled=false;return;}
+        const result=await api('POST','/auth/2fa/enroll',{channel,...(channel==='email'?{email:email.value}:{phone:phone.value})});
+        enrollmentToken=result.enrollment_token;status.textContent=i18n.t`Код отправлен: ${result.masked}. Действует 5 минут.`;
+        codeLabel.hidden=false;code.required=true;confirm.hidden=false;code.focus();
+        let seconds=60;const ticker=setInterval(()=>{send.textContent=i18n.t`Отправить снова (${--seconds} с)`;
+          if(seconds<=0||!send.isConnected){clearInterval(ticker);send.textContent=i18n.t('Отправить снова');send.disabled=false;}},1000);
+      }catch(error){err.textContent=error.message;send.disabled=false;}
+    }},i18n.t('Получить код'));
+    const confirm=h('button',{class:'primary',hidden:true},i18n.t('Включить 2FA'));
+    let enrollmentToken;
+    appendChildren(form, h('p',{class:'muted'},i18n.t('Второй шаг будет включён только после подтверждения кода. Другие устройства потребуется авторизовать заново.')),
+      channel==='email'?h('label',{class:'field'},i18n.t('Почта для кодов'),email)
+        :h('div',{class:'stack'},h('label',{class:'field'},i18n.t('Номер телефона в Telegram'),phone),
+          h('p',{class:'muted small'},i18n.t('Укажите номер с кодом страны. Нажимая «Получить код», вы соглашаетесь получать коды входа в официальном чате Telegram Verification Codes.'))),
+      status,codeLabel,h('div',{class:'row'},send,confirm,h('button',{type:'button',class:'ghost',onclick:close},i18n.t('Отмена'))));
+    form.addEventListener('submit',async e=>{
+      e.preventDefault();err.textContent='';confirm.disabled=true;
+      try{await api('POST','/auth/2fa/enroll/verify',{enrollment_token:enrollmentToken,code:code.value});close();toast(i18n.t('2FA включена'));await render();}
+      catch(error){err.textContent=error.message;confirm.disabled=false;}
+    });
+  });
+}
 function providerButtons(err, intent = 'login', invitationToken) {
   return h('div', { class: 'stack' }, Object.entries(providerLabels).map(([provider, label]) =>
     h('button', { type: 'button', class: 'big', disabled: !state.config?.providers?.[provider],
@@ -1821,6 +1901,10 @@ async function accountsView() {
                 null,
                 admin && a.kind === 'human' && !a.disabled && h('button', { class: 'ghost',
                   onclick: () => act(async () => showInvitation(a.name, await api('POST', `/accounts/${a.id}/invitation`))) }, i18n.t('Пригласить')),
+                admin && a.kind === 'human' && h('button',{class:'ghost',onclick:()=>{
+                  if(confirm(i18n.t`Сбросить 2FA для ${a.name}? Все его сессии завершатся. Убедитесь, что запрос поступил от владельца аккаунта.`))
+                    act(async()=>{await api('POST',`/accounts/${a.id}/reset-2fa`);toast(i18n.t('2FA сброшена'));if(a.id===state.me.id)await boot();});
+                }},i18n.t('Сбросить 2FA')),
                 (admin || a.id === state.me.id) &&
                   h(
                     'button',
@@ -1893,7 +1977,7 @@ function connectView() {
 
 async function profileView() {
   const blocker = pwa.passkeyBlocker(state.config);
-  const [passkeys, pushOn, identities] = await Promise.all([api('GET', '/passkeys'), pwa.pushEnabled().catch(() => false), api('GET', '/auth/identities')]);
+  const [passkeys, pushOn, identities, secondFactor, devices] = await Promise.all([api('GET', '/passkeys'), pwa.pushEnabled().catch(() => false), api('GET', '/auth/identities'),api('GET','/auth/2fa/settings'),state.me.kind==='human'?api('GET','/devices'):[]]);
   const err = h('div', { class: 'error small', role: 'alert' });
   const run = (fn) => async (e) => {
     err.textContent = '';
@@ -1931,6 +2015,39 @@ async function profileView() {
         h('a', { class: 'task-row', href: '#/analytics', style: 'grid-template-columns:1fr' }, i18n.t('Аналитика')),
         h('a', { class: 'task-row', href: '#/accounts', style: 'grid-template-columns:1fr' }, i18n.t('Аккаунты и ключи')),
         h('a', { class: 'task-row', href: '#/connect', style: 'grid-template-columns:1fr' }, i18n.t('Подключение агентов')),
+      ),
+      state.me.kind === 'human' && h('section', { class: 'card pad stack' },
+        h('h2',null,i18n.t('Устройства')),
+        h('p',{class:'muted small',style:'margin:0'},i18n.t('Один браузер или установка приложения — одно устройство. Повторные входы объединяются.')),
+        devices.map(device=>h('div',{class:'device-row'},
+          h('div',{class:'stack',style:'gap:4px'},
+            h('div',{class:'row'},h('strong',null,device.name),device.current&&h('span',{class:'chip'},i18n.t('Это устройство'))),
+            h('span',{class:'muted small'},({desktop_browser:i18n.t('Браузер на компьютере'),mobile_browser:i18n.t('Мобильный браузер'),desktop_pwa:i18n.t('PWA на компьютере'),mobile_pwa:i18n.t('Мобильная PWA'),ios:i18n.t('Приложение iOS')})[device.client_type]),
+            h('span',{class:'muted small'},i18n.t`Активность: ${fmtAgo(device.last_used_at)} · Сессий: ${device.sessions}`)),
+          h('div',{class:'row'},
+            h('button',{class:'ghost',onclick:()=>dialog(i18n.t('Имя устройства'),(form,{close,err})=>{
+              const name=h('input',{value:device.name,maxlength:80,required:true,'aria-label':i18n.t('Имя устройства')});
+              form.append(h('label',{class:'field'},i18n.t('Имя устройства'),name),h('button',{class:'primary'},i18n.t('Сохранить')));
+              form.addEventListener('submit',async e=>{e.preventDefault();try{await api('PATCH',`/devices/${device.id}`,{name:name.value});close();await render();}catch(error){err.textContent=error.message;}});
+            })},i18n.t('Переименовать')),
+            h('button',{class:'ghost',onclick:run(async()=>{
+              if(!confirm(device.current?i18n.t('Завершить все входы с этого устройства? Потребуется войти снова.'):i18n.t`Завершить все входы на устройстве «${device.name}»? Уведомления на нём будут отключены.`))return;
+              await api('DELETE',`/devices/${device.id}`);
+              if(device.current){pwa.forgetPrivateData();state.me=null;}
+            })},i18n.t('Завершить входы'))))),
+        !devices.length&&h('p',{class:'muted small'},i18n.t('Активных устройств нет')),
+      ),
+      state.me.kind === 'human' && h('section', { class: 'card pad stack' },
+        h('h2',null,i18n.t('Двухэтапный вход')),
+        h('p',{class:'muted',style:'margin:0'},secondFactor.enabled?i18n.t('После входа требуется код по одному из подключённых каналов.'):i18n.t('Включите дополнительное подтверждение входа кодом. Это необязательно.')),
+        Object.entries(factorLabels).map(([channel,label])=>{
+          const method=secondFactor.methods.find(m=>m.channel===channel);
+          return h('div',{class:'row'},h('strong',null,label),h('span',{class:'muted small'},method?.masked??i18n.t('Не подключён')),h('span',{class:'spacer'}),
+            h('button',{disabled:!secondFactor.available[channel],onclick:()=>enrollTwoFactor(channel)},method?i18n.t('Сменить'):i18n.t('Подключить')),
+            method&&h('button',{class:'ghost',onclick:run(async()=>{if(confirm(i18n.t`Отключить коды ${label}?`))await api('DELETE',`/auth/2fa/settings/${channel}`);})},i18n.t('Отключить')));
+        }),
+        !Object.values(secondFactor.available).some(Boolean)&&h('p',{class:'muted small'},i18n.t('Отправка кодов пока не настроена администратором.')),
+        h('p',{class:'muted small',style:'margin:0'},i18n.t('Добавьте оба канала, чтобы иметь запасной способ подтверждения. Для изменения 2FA может потребоваться войти заново.')),
       ),
       state.me.kind === 'human' && h('section', { class: 'card pad stack' },
         h('h2', null, i18n.t('Способы входа')),
@@ -2387,9 +2504,13 @@ function timelineFilters(projects, collapse, expand) {
 let renderSeq = 0;
 async function render() {
   const seq = ++renderSeq;
+  clearInterval(state.twoFactorTicker);
   state.poll = null;
   tip.hidden = true;
   document.title = 'AI Guild';
+  if(location.hash==='#/two-factor') {
+    const view=await twoFactorView();if(seq===renderSeq)app.replaceChildren(view);return;
+  }
   if (location.hash.startsWith('#/invite/')) {
     const view = await invitationView(location.hash.slice('#/invite/'.length));
     if (seq === renderSeq) app.replaceChildren(view);
@@ -2440,7 +2561,7 @@ async function refreshInboxCount() {
 async function boot() {
   state.config ??= await fetch('/api/config').then((r) => r.json()).catch(() => null);
   try {
-    const res = await fetch('/api/me');
+    const res = await fetch('/api/me',{headers:pwa.clientHeaders()});
     state.me = res.ok ? await res.json() : null;
     if (state.me) {
       state.accounts = await api('GET', '/accounts');

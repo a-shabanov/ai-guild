@@ -27,6 +27,8 @@ final class AppState {
     private(set) var client: APIClient?
     private(set) var me: Account?
     private(set) var accounts: [Account] = []
+    private(set) var secondFactor: SessionResponse?
+    private var secondFactorServer: URL?
     var inboxCount = 0 {
         didSet { Notifier.setBadge(inboxCount) }
     }
@@ -147,7 +149,7 @@ final class AppState {
             let session: SessionResponse = try await anonymous.send("POST", "/api/session", body: [
                 "key": .string(key.trimmingCharacters(in: .whitespacesAndNewlines)),
             ])
-            try await adopt(server: url, token: session.sessionToken)
+            try await acceptSignIn(session, server: url)
         } catch where error.isConnectivity {
             // On the sign-in screen the address is the usual suspect: say which one was tried and why it failed.
             let reason = (error as? URLError)?.localizedDescription ?? ""
@@ -157,19 +159,52 @@ final class AppState {
 
     func signInWithPasskey(server: String) async throws {
         let url = try parse(server: server)
-        try await adopt(server: url, token: try await Passkeys.shared.signIn(server: url))
+        try await acceptSignIn(try await Passkeys.shared.signIn(server: url), server: url)
     }
 
     func signInWithProvider(server: String, provider: String) async throws {
         let url = try parse(server: server)
         let anonymous = APIClient(baseURL: url, key: "")
-        guard let token = try await SocialLogin.shared.authorize(provider: provider, client: anonymous) else {
-            throw APIError.server("Не удалось получить сессию")
+        try await acceptSignIn(try await SocialLogin.shared.authorize(provider: provider, client: anonymous), server: url)
+    }
+
+    private func acceptSignIn(_ response: SessionResponse, server: URL) async throws {
+        if response.twoFactorRequired == true, let token = response.challengeToken, token.count == 43 {
+            secondFactor = response
+            secondFactorServer = server
+            phase = .signedOut
+        } else if let token = response.sessionToken {
+            secondFactor = nil
+            secondFactorServer = nil
+            try await adopt(server: server, token: token)
+        } else { throw APIError.server("Не удалось получить сессию") }
+    }
+
+    func sendSecondFactor(channel: String) async throws -> TwoFactorSent {
+        guard let server = secondFactorServer, let token = secondFactor?.challengeToken else { throw APIError.server("Войдите снова") }
+        return try await APIClient(baseURL: server, key: "").send("POST", "/api/auth/2fa/send", body: [
+            "challenge_token": .string(token), "channel": .string(channel),
+        ])
+    }
+
+    func verifySecondFactor(code: String) async throws {
+        guard let server = secondFactorServer, let token = secondFactor?.challengeToken else { throw APIError.server("Войдите снова") }
+        let response: SessionResponse = try await APIClient(baseURL: server, key: "").send("POST", "/api/auth/2fa/verify", body: [
+            "challenge_token": .string(token), "code": .string(code),
+        ])
+        try await acceptSignIn(response, server: server)
+    }
+
+    func cancelSecondFactor() {
+        if let server = secondFactorServer, let token = secondFactor?.challengeToken {
+            Task { let _: OK? = try? await APIClient(baseURL: server, key: "").send("DELETE", "/api/auth/2fa/pending", body: ["challenge_token": .string(token)]) }
         }
-        try await adopt(server: url, token: token)
+        secondFactor = nil
+        secondFactorServer = nil
     }
 
     func signOut() {
+        cancelSecondFactor()
         if let client {
             Task {
                 if let token = Notifier.deviceToken {

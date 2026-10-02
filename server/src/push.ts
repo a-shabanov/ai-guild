@@ -42,6 +42,7 @@ export async function subscribe(
   actor: Actor,
   sub: { endpoint: string; keys: { p256dh: string; auth: string } },
   userAgent?: string,
+  deviceId?: number,
 ): Promise<void> {
   let url: URL;
   try {
@@ -54,11 +55,11 @@ export async function subscribe(
     throw new HttpError(400, 'unsupported push service');
   }
   await q(
-    `insert into push_subscriptions(account_id, endpoint, p256dh, auth, user_agent)
-     values ($1, $2, $3, $4, $5)
+    `insert into push_subscriptions(account_id, endpoint, p256dh, auth, user_agent, device_id)
+     values ($1, $2, $3, $4, $5, $6)
      on conflict (endpoint) do update
-       set account_id = excluded.account_id, p256dh = excluded.p256dh, auth = excluded.auth`,
-    [actor.id, sub.endpoint, sub.keys.p256dh, sub.keys.auth, userAgent?.slice(0, 300) ?? null],
+       set account_id = excluded.account_id, p256dh = excluded.p256dh, auth = excluded.auth,device_id=excluded.device_id`,
+    [actor.id, sub.endpoint, sub.keys.p256dh, sub.keys.auth, userAgent?.slice(0, 300) ?? null,deviceId??null],
   );
 }
 
@@ -102,12 +103,13 @@ export async function registerApnsDevice(
   actor: Actor,
   token: string,
   environment: 'sandbox' | 'production',
+  deviceId?: number,
 ): Promise<void> {
   await q(
-    `insert into apns_devices(account_id, token, environment) values ($1, $2, $3)
+    `insert into apns_devices(account_id, token, environment, device_id) values ($1, $2, $3, $4)
      on conflict (token) do update
-       set account_id = excluded.account_id, environment = excluded.environment`,
-    [actor.id, token.toLowerCase(), environment],
+       set account_id = excluded.account_id, environment = excluded.environment,device_id=excluded.device_id`,
+    [actor.id, token.toLowerCase(), environment,deviceId??null],
   );
 }
 
