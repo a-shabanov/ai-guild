@@ -89,6 +89,16 @@ export async function passkeySignIn(api) {
   return api('POST', '/passkeys/login/verify', { challenge_id, response: credentialJSON(credential) });
 }
 
+// Confirmation of the existing session, with a challenge scoped to that session.
+export async function passkeyUnlock(request) {
+  const {challenge_id,options}=await request('POST','/passkey/options');
+  let credential;
+  try{credential=await navigator.credentials.get({publicKey:requestOptions(options)});}
+  catch(error){throw friendly(error);}
+  if(!credential)throw new Error(i18n.t('Проверка отменена'));
+  return request('POST','/passkey/verify',{challenge_id,response:credentialJSON(credential)});
+}
+
 export async function passkeyRegister(api, name) {
   const { challenge_id, options } = await api('POST', '/passkeys/register/options');
   let credential;
@@ -137,7 +147,7 @@ export function clientHeaders() {
 /** What the device calls its biometric check, for button labels. */
 export function biometryName() {
   const device = deviceName();
-  if (device === 'iPhone' || device === 'iPad') return 'Face ID';
+  if (device === 'iPhone' || device === 'iPad') return 'Face ID / Touch ID';
   if (device === 'Mac') return 'Touch ID';
   return 'passkey';
 }
@@ -194,8 +204,13 @@ export async function updateApp() {
   location.reload();
 }
 
+export function hidePrivateData() {
+  navigator.serviceWorker?.controller?.postMessage({type:'logout'});
+  setBadge(0);
+}
+
 export function forgetPrivateData() {
-  navigator.serviceWorker?.controller?.postMessage({ type: 'logout' });
+  hidePrivateData();
   try {
     localStorage.removeItem(OUTBOX);
   } catch {}
@@ -381,4 +396,13 @@ export async function takeShare() {
   }
   for (const key of await cache.keys()) await cache.delete(key);
   return { title, text, files: loaded };
+}
+
+/** Release versions are shared by the web app and its server. */
+export function isNewerRelease(latest, current) {
+  const parse = value => /^\d+\.\d+\.\d+$/.test(value ?? '') ? value.split('.').map(Number) : null;
+  const next=parse(latest.version), local=parse(current.version);
+  if(!next || !local || !Number.isInteger(latest.build) || !Number.isInteger(current.build))return false;
+  for(let index=0;index<3;index++)if(next[index]!==local[index])return next[index]>local[index];
+  return latest.build>current.build;
 }

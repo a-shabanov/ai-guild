@@ -6,8 +6,8 @@ import UserNotifications
 ///
 /// Remote push (APNs) is used when this build and the server are configured for it. Otherwise
 /// the app checks the inbox during background refresh and posts local notifications, which
-/// iOS schedules at its own discretion and which cannot run while the Face ID lock is on
-/// (the credential is unreadable without the owner's face).
+/// iOS schedules at its own discretion and which cannot run while the app code is configured
+/// (the credential is encrypted or requires the owner's biometric confirmation).
 @MainActor
 enum Notifier {
     static let refreshTask = "dev.aitracker.app.refresh"
@@ -79,7 +79,7 @@ enum Notifier {
     static func refreshInBackground() async {
         guard isEnabled else { return }
         scheduleRefresh()
-        guard let token = Keychain.load(),
+        guard !AppPasscode.isConfigured, let token = Keychain.load(),
               let server = URL(string: AppState.shared.serverURL) else { return }
         let client = APIClient(baseURL: server, key: token)
         guard let inbox: Inbox = try? await client.get("/api/inbox"),

@@ -461,3 +461,7 @@ export const AnalyticsResult = z.object({
   rows: z.array(AnalyticsRow),
   tasks_by_status: z.record(z.string(), z.number()),
 });
+
+export const AppPasscode = z.string().regex(/^[0-9]{6}$/, 'six digits required');
+export const AppLockUnlock = z.object({code:AppPasscode});
+export const AppLockConfigure = z.object({code:AppPasscode,current_code:AppPasscode.optional(),biometric:z.boolean().default(false)});

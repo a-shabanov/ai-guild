@@ -62,22 +62,24 @@ export async function destroySession(token: string | undefined): Promise<void> {
   }
 }
 
-async function authenticateSession(token: string): Promise<Actor> {
+async function authenticateSession(token: string, allowLocked = false): Promise<Actor> {
   const row = await q1(
     `update sessions s set last_used_at = now()
        from accounts a
       where s.token_hash = $1 and s.expires_at > now() and a.id = s.account_id and not a.disabled
         and (s.two_factor_at is not null or not exists(select 1 from account_second_factors f where f.account_id=a.id))
-      returning a.id, a.name, a.kind, a.system, a.role`,
+      returning a.id, a.name, a.kind, a.system, a.role, s.app_locked_at`,
     [hashKey(token)],
   );
   if (!row) throw new HttpError(401, 'session expired');
+  if (row.app_locked_at && !allowLocked) throw new HttpError(423, 'app is locked');
+  delete row.app_locked_at;
   q('update accounts set last_seen_at = now() where id = $1', [row.id]).catch(() => {});
   return row as Actor;
 }
 
-export async function authenticate(key: string | undefined, primaryOnly = false): Promise<Actor> {
-  if (key?.startsWith(SESSION_PREFIX)) return authenticateSession(key);
+export async function authenticate(key: string | undefined, primaryOnly = false, allowLocked = false): Promise<Actor> {
+  if (key?.startsWith(SESSION_PREFIX)) return authenticateSession(key, allowLocked);
   if (!key || !key.startsWith(KEY_PREFIX)) throw new HttpError(401, 'missing or malformed API key');
   const row = await q1(
     'select id, name, kind, system, role, disabled from accounts where key_hash = $1',

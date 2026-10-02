@@ -6,6 +6,7 @@ import * as pwa from './pwa.js';
 import { createNavigation } from './navigation.js';
 import { installPullToRefresh } from './pull-to-refresh.js';
 import appVersion from './version.js';
+import { passcodeView, disposePasscodeView } from './app-lock-view.js';
 
 const STATUS = {
   todo: i18n.t('К выполнению'),
@@ -95,7 +96,14 @@ async function api(method, path, body) {
   const offline = res.headers.has('X-From-Cache') || res.headers.has('X-Offline') || navigator.onLine === false;
   setOffline(offline);
   const data = await res.json().catch(() => null);
-  if (res.status === 401 && state.me) {
+  if (res.status === 423) {
+    state.appLock = { ...(state.appLock || {}), configured: true, locked: true };
+    state.me = null;
+    render();
+  }
+  if (res.status === 401 && (state.me || state.appLock)) {
+    state.appLock = null;
+    localStorage.removeItem('ait-app-lock-configured');
     state.me = null;
     render();
   }
@@ -434,6 +442,7 @@ function toast(message) {
 }
 
 async function flushOutbox() {
+  if(!state.me || state.appLock?.locked || state.appLock?.setup)return;
   const sent = await pwa.flushOutbox(api).catch(() => 0);
   if (sent) {
     toast(sent === 1 ? i18n.t('Отложенный комментарий отправлен') : i18n.t`Отправлено отложенных комментариев: ${sent}`);
@@ -463,6 +472,34 @@ function withTip(el, title, body) {
 }
 
 // ---------- shell ----------
+
+function updateStatus() {
+  return state.updateAvailable ? i18n.t`Доступна версия ${state.latestRelease}` : state.updateError || (state.updateChecked ? i18n.t('Установлена актуальная версия') : i18n.t('Проверяем обновления…'));
+}
+async function checkAppUpdate(explicit=false) {
+  if (state.checkingUpdate) return;
+  state.checkingUpdate=true;
+  try {
+    if (!navigator.onLine) throw new Error(i18n.t('Для проверки обновлений нужна сеть'));
+    const response=await fetch(`/api/config?update=${Date.now()}`,{cache:'no-store',signal:AbortSignal.timeout(10_000)});
+    if(!response.ok)throw new Error(i18n.t('Не удалось проверить обновления'));
+    const latest=await response.json();
+    if (!latest.version || !Number.isInteger(latest.build)) throw new Error(i18n.t('Не удалось проверить обновления'));
+    state.updateAvailable=pwa.isNewerRelease(latest,appVersion);
+    state.latestRelease=`${latest.version} (${latest.build})`;
+    state.updateChecked=true;state.updateError=null;
+    if(state.updateAvailable && state.notifiedRelease!==state.latestRelease && state.me && !state.appLock?.setup && !state.appLock?.locked){
+      state.notifiedRelease=state.latestRelease;
+      toast(i18n.t('Доступно обновление приложения. Откройте «Настройки → О приложении».'));
+    }
+  } catch(error) { state.updateError=error.message; if(explicit)throw error; }
+  finally {
+    state.checkingUpdate=false;
+    for(const badge of document.querySelectorAll('.update-indicator'))badge.hidden=!state.updateAvailable;
+    for(const status of document.querySelectorAll('.update-status'))status.textContent=updateStatus();
+    for(const button of document.querySelectorAll('[data-install-update]'))button.hidden=!state.updateAvailable;
+  }
+}
 
 const release = () => `${appVersion.version} (${appVersion.build})`;
 
@@ -506,7 +543,7 @@ function shell(active, ...content) {
         link('#/tasks', i18n.t('Задачи'), 'tasks'),
         link('#/inbox', i18n.t('Входящие'), 'inbox', state.inboxCount ? h('span', { class: 'badge' }, String(state.inboxCount)) : null),
         link('#/analytics', i18n.t('Аналитика'), 'analytics'),
-        link('#/settings', i18n.t('Настройки'), 'settings', null, 'mobile-only'),
+        link('#/settings', i18n.t('Настройки'), 'settings', h('span',{class:'badge update-indicator',hidden:!state.updateAvailable,'aria-label':i18n.t('Есть обновление')},'•'), 'mobile-only'),
         link('#/accounts', i18n.t('Аккаунты'), 'accounts', null, 'desktop-only'),
         link('#/connect', i18n.t('Подключение'), 'connect', null, 'desktop-only'),
       ),
@@ -517,6 +554,7 @@ function shell(active, ...content) {
         { href: '#/settings', class: `row profile-link ${active === 'settings' ? 'active' : ''}`, style: 'flex-wrap:nowrap', title: i18n.t('Настройки') },
         avatar(state.me.name, state.me.kind),
         h('span', { class: 'small' }, state.me.name),
+        h('span',{class:'badge update-indicator',hidden:!state.updateAvailable,'aria-label':i18n.t('Есть обновление')},'•'),
       ),
     ),
     h('div', { class: 'offline-bar', role: 'status' }, i18n.t('Нет сети — офлайн-режим')),
@@ -529,6 +567,8 @@ async function logout() {
   await fetch('/api/session', { method: 'DELETE' }).catch(() => {});
   pwa.forgetPrivateData();
   state.me = null;
+  state.appLock = null; state.lockMode = null;
+  localStorage.removeItem('ait-app-lock-configured');
   render();
 }
 
@@ -574,7 +614,7 @@ function loginView() {
       h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Войдите способом, который привязан к вашему аккаунту.')),
       providerButtons(err),
       !Object.values(state.config?.providers ?? {}).some(Boolean) && h('p', { class: 'muted small', style: 'margin:0' }, i18n.t('Вход через Google и Telegram пока не настроен администратором.')),
-      passkeys && h('button', { type: 'button', class: 'primary big', onclick: withPasskey }, i18n.t`Войти с ${pwa.biometryName()}`),
+      passkeys && h('button', { type: 'button', class: 'primary big', onclick: withPasskey }, i18n.t('Войти с passkey')),
       passkeys && h('div', { class: 'divider' }, i18n.t('или')),
       h('p', { class: 'muted small', style: 'margin:0' }, i18n.t('Первый вход — по приглашению администратора. Если у вас уже есть API-ключ, можно войти с ним.')),
       h('label', { class: 'field' }, i18n.t('API-ключ'), input),
@@ -2046,14 +2086,42 @@ function connectView() {
 
 // ---------- profile: passkeys, notifications, install ----------
 
-async function profileView() {
+const settingsPages = {
+  security: [i18n.t('Защита приложения'), i18n.t('PIN-код и быстрая разблокировка')],
+  'sign-in': [i18n.t('Способы входа'), i18n.t('Passkeys, Google, Telegram и двухэтапный вход')],
+  devices: [i18n.t('Устройства'), i18n.t('Сохранённые входы и управление устройствами')],
+  notifications: [i18n.t('Уведомления'), i18n.t('Push-уведомления и события')],
+  appearance: [i18n.t('Оформление'), i18n.t('Язык интерфейса и тема')],
+  app: [i18n.t('О приложении'), i18n.t('Версия, обновления и установка')],
+};
+
+function settingsMenu() {
+  return shell('settings',
+    h('div', {class:'page-head'}, h('h1',null,i18n.t('Настройки'))),
+    h('div',{class:'stack'},
+      h('section',{class:'card pad'},h('div',{class:'row'},avatar(state.me.name,state.me.kind),h('strong',null,state.me.name),h('span',{class:'chip'},state.me.role==='admin'?i18n.t('Администратор'):i18n.t('Участник')))),
+      h('nav',{class:'card settings-menu','aria-label':i18n.t('Настройки')},Object.entries(settingsPages).filter(([key])=>state.me.kind==='human'||!['security','devices'].includes(key)).map(([key,[title,description]])=>
+        h('a',{class:'settings-link',href:`#/settings/${key}`},h('div',{class:'stack',style:'gap:4px'},h('strong',null,title),h('span',{class:'muted small'},key==='security'?(state.appLock?.configured?i18n.t('PIN установлен на этом устройстве'):i18n.t('Установите PIN на этом устройстве')):description)),
+          key==='app'&&h('span',{class:'chip update-indicator',hidden:!state.updateAvailable},i18n.t('Есть обновление')),h('span',{'aria-hidden':'true',class:'muted'},'›')))),
+      h('nav',{class:'card task-list mobile-only'},
+        h('a',{class:'settings-link',href:'#/timeline'},i18n.t('График работ')),
+        h('a',{class:'settings-link',href:'#/accounts'},i18n.t('Аккаунты и ключи')),
+        h('a',{class:'settings-link',href:'#/connect'},i18n.t('Подключение агентов'))),
+      h('div',null,h('button',{onclick:logout},i18n.t('Выйти')))));
+}
+
+async function profileView(section) {
+  if (!settingsPages[section]) return settingsMenu();
   const blocker = pwa.passkeyBlocker(state.config);
   const err = h('div', { class: 'error small', role: 'alert' });
   const optional = (promise) => promise.catch((ex) => { err.textContent = ex.message; return null; });
   const [passkeys, pushOn, identities, secondFactor, devices, notificationPreferences] = await Promise.all([
-    optional(api('GET', '/passkeys')), pwa.pushEnabled(api).catch(() => false),
-    optional(api('GET', '/auth/identities')), optional(api('GET','/auth/2fa/settings')),
-    state.me.kind==='human' ? optional(api('GET','/devices')) : [], optional(api('GET', '/push/preferences'))]);
+    ['sign-in','security'].includes(section) ? optional(api('GET', '/passkeys')) : null,
+    section==='notifications' ? pwa.pushEnabled(api).catch(() => false) : false,
+    section==='sign-in' ? optional(api('GET','/auth/identities')) : null,
+    section==='sign-in' ? optional(api('GET','/auth/2fa/settings')) : null,
+    section==='devices' && state.me.kind==='human' ? optional(api('GET','/devices')) : null,
+    section==='notifications' ? optional(api('GET','/push/preferences')) : null]);
   const run = (fn) => async (e) => {
     err.textContent = '';
     const button = e.currentTarget;
@@ -2105,23 +2173,13 @@ async function profileView() {
 
   return shell(
     'settings',
-    h('div', { class: 'page-head' }, h('h1', null, i18n.t('Настройки')), h('span', { class: 'spacer' }), h('button', { onclick: logout }, i18n.t('Выйти'))),
-    h(
-      'div',
-      { class: 'stack' },
-      err,
-      h(
-        'section',
-        { class: 'card pad stack' },
-        h('div', { class: 'row' }, avatar(state.me.name, state.me.kind), h('strong', null, state.me.name), h('span', { class: 'chip' }, state.me.role === 'admin' ? i18n.t('Администратор') : i18n.t('Участник')), h('span', { class: 'chip mono' }, state.me.key_prefix + '…')),
-      ),
-      h(
-        'nav',
-        { class: 'card task-list mobile-only' },
-        h('a', { class: 'task-row', href: '#/timeline', style: 'grid-template-columns:1fr' }, i18n.t('График работ')),
-        h('a', { class: 'task-row', href: '#/accounts', style: 'grid-template-columns:1fr' }, i18n.t('Аккаунты и ключи')),
-        h('a', { class: 'task-row', href: '#/connect', style: 'grid-template-columns:1fr' }, i18n.t('Подключение агентов')),
-      ),
+    h('a',{class:'task-back',href:'#/settings'},i18n.t('← Настройки')),
+    h('div',{class:'page-head'},h('h1',null,settingsPages[section][0])),
+    h('div',{class:'stack settings-detail'},err,
+      section==='appearance' && h('section',{class:'card pad stack'},
+        h('label',{class:'field'},i18n.t('Язык интерфейса'),i18n.languagePicker()),
+        h('p',{class:'muted',style:'margin:0'},i18n.t('Тема меняется вместе с настройками устройства.'))),
+      section==='notifications' &&
       h(
         'section',
         { class: 'card pad stack' },
@@ -2136,11 +2194,13 @@ async function profileView() {
           ? h('div', { class: 'notification-choices' }, notificationChoices, notificationMessage)
           : h('p', { class: 'error small', role: 'alert' }, i18n.t('Не удалось загрузить настройки уведомлений. Проверьте сеть и обновите экран.')),
       ),
-      h('section', {class:'card pad stack about-app'},
+      section==='app' && h('section', {class:'card pad stack about-app'},
         h('h2',null,i18n.t('О приложении')),
         h('div',{class:'row'},h('strong',null,'AI Guild'),h('span',{class:'spacer'}),h('span',{class:'mono'},i18n.t`Версия ${release()}`)),
-        h('div',null,h('button',{onclick:run(() => pwa.updateApp())},i18n.t('Обновить приложение')))),
-      state.me.kind === 'human' && devices && h('section', { class: 'card pad stack' },
+        h('p',{class:'update-status',role:'status'},updateStatus()),
+        h('div',{class:'row'},h('button',{class:'primary',hidden:!state.updateAvailable,'data-install-update':'',onclick:run(()=>pwa.updateApp())},i18n.t('Обновить приложение')),
+          h('button',{onclick:async event=>{const button=event.currentTarget;button.disabled=true;try{await checkAppUpdate();}finally{button.disabled=false;}}},i18n.t('Проверить обновления')))),
+      section==='devices' && state.me.kind === 'human' && devices && h('section', { class: 'card pad stack' },
         h('h2',null,i18n.t('Устройства')),
         h('p',{class:'muted small',style:'margin:0'},i18n.t('Один браузер или установка приложения — одно устройство. Повторные входы объединяются.')),
         devices.map(device=>h('div',{class:'device-row'},
@@ -2161,7 +2221,7 @@ async function profileView() {
             })},i18n.t('Завершить входы'))))),
         !devices.length&&h('p',{class:'muted small'},i18n.t('Активных устройств нет')),
       ),
-      state.me.kind === 'human' && secondFactor && h('section', { class: 'card pad stack' },
+      section==='sign-in' && state.me.kind === 'human' && secondFactor && h('section', { class: 'card pad stack' },
         h('h2',null,i18n.t('Двухэтапный вход')),
         h('p',{class:'muted',style:'margin:0'},secondFactor.enabled?i18n.t('После входа требуется код по одному из подключённых каналов.'):i18n.t('Включите дополнительное подтверждение входа кодом. Это необязательно.')),
         Object.entries(factorLabels).map(([channel,label])=>{
@@ -2173,7 +2233,7 @@ async function profileView() {
         !Object.values(secondFactor.available).some(Boolean)&&h('p',{class:'muted small'},i18n.t('Отправка кодов пока не настроена администратором.')),
         h('p',{class:'muted small',style:'margin:0'},i18n.t('Добавьте оба канала, чтобы иметь запасной способ подтверждения. Для изменения 2FA может потребоваться войти заново.')),
       ),
-      state.me.kind === 'human' && identities && h('section', { class: 'card pad stack' },
+      section==='sign-in' && state.me.kind === 'human' && identities && h('section', { class: 'card pad stack' },
         h('h2', null, i18n.t('Способы входа')),
         h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Привяжите Google и Telegram, чтобы входить без API-ключа.')),
         Object.entries(providerLabels).map(([provider, label]) => {
@@ -2191,10 +2251,24 @@ async function profileView() {
                 location.assign(result.authorization_url);
               }) }, i18n.t('Привязать')));
         })),
-      passkeys && h(
+      section==='security' && h('section',{class:'card pad stack'},
+        h('h2',null,i18n.t('PIN-код')),
+        h('div',{class:'row'},h('strong',null,state.appLock?.configured?i18n.t('Установлен'):i18n.t('Не установлен'))),
+        h('p',{class:'muted',style:'margin:0'},i18n.t('Отдельный PIN из шести цифр на каждом устройстве. Он защищает сохранённый вход в приложение.')),
+        h('div',null,h('button',{class:'primary',disabled:!state.appLock,onclick:()=>{state.lockMode=state.appLock.configured?'change':'setup';render();}},state.appLock?.configured?i18n.t('Изменить PIN-код'):i18n.t('Установить PIN-код'))),
+        !state.appLock && h('p',{class:'muted small'},i18n.t('Для настройки PIN обновите сервер приложения.')),
+        state.appLock?.configured && h('div',null,h('button',{onclick:()=>lockApplication()},i18n.t('Заблокировать сейчас')))),
+      section==='security' && h('section',{class:'card pad stack'},
+        h('h2',null,i18n.t('Быстрая разблокировка')),
+        h('p',{class:'muted',style:'margin:0'},i18n.t('Подтверждение на устройстве заменяет ручной ввод PIN.')),
+        h('div',null,h('button',{onclick:()=>{state.lockMode='biometric';render();},disabled:!state.appLock?.configured || !!blocker || !passkeys?.length},
+          state.appLock?.biometric?i18n.t`Отключить быструю разблокировку через ${bio}`:i18n.t`Включить быструю разблокировку через ${bio}`)),
+        h('p',{class:'muted small',style:'margin:0'},i18n.t('Браузер подтверждает разблокировку через passkey: биометрией или кодом устройства. Для включения добавьте passkey в разделе входа в аккаунт.')),
+        h('a',{href:'#/settings/sign-in'},i18n.t('Способы входа'))),
+      section==='sign-in' && passkeys && h(
         'section',
         { class: 'card pad stack' },
-        h('h2', null, i18n.t`Вход по ${bio}`),
+        h('h2', null, i18n.t('Вход в аккаунт · Passkeys')),
         h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Passkey хранится на устройстве и синхронизируется через связку ключей. Сервер получает только открытый ключ — украсть с него нечего, а фишинговый сайт passkey не примет.')),
         passkeys.length
           ? h(
@@ -2212,9 +2286,9 @@ async function profileView() {
           : h('div', { class: 'muted small' }, i18n.t('Пока ни одного passkey')),
         blocker
           ? h('div', { class: 'muted small' }, blocker)
-          : h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.passkeyRegister(api, pwa.deviceName())) }, passkeys.length ? i18n.t('Добавить ещё один') : i18n.t`Включить ${bio}`)),
+          : h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.passkeyRegister(api, pwa.deviceName())) }, passkeys.length ? i18n.t('Добавить ещё один') : i18n.t('Добавить passkey'))),
       ),
-      h(
+      section==='app' && h(
         'section',
         { class: 'card pad stack' },
         h('h2', null, i18n.t('Приложение')),
@@ -2229,7 +2303,7 @@ async function profileView() {
   );
 }
 
-// Offer biometrics once, right after the first sign-in with a key.
+// Offer a passkey once, right after the first sign-in with a key.
 function offerPasskey() {
   if (!state.signedInWithKey) return;
   state.signedInWithKey = false;
@@ -2237,9 +2311,9 @@ function offerPasskey() {
   localStorage.setItem('ait-passkey-offered', '1');
   api('GET', '/passkeys').then((list) => {
     if (list.length) return;
-    dialog(i18n.t`Включить вход по ${pwa.biometryName()}?`, (form, { close, err }) => {
+    dialog(i18n.t('Добавить passkey для входа в аккаунт?'), (form, { close, err }) => {
       appendChildren(form,
-        h('p', { style: 'margin:0' }, i18n.t('В следующий раз не придётся вводить API-ключ — достаточно взгляда или отпечатка.')),
+        h('p', { style: 'margin:0' }, i18n.t('Passkey — способ входа в аккаунт. Код-пароль и быстрая разблокировка защищают доступ к приложению отдельно.')),
         h(
           'div',
           { class: 'row', style: 'justify-content:flex-end' },
@@ -2252,7 +2326,7 @@ function offerPasskey() {
         try {
           await pwa.passkeyRegister(api, pwa.deviceName());
           close();
-          toast(i18n.t('Готово. Теперь можно входить по биометрии'));
+          toast(i18n.t('Passkey добавлен. Теперь можно входить с ним в аккаунт'));
         } catch (ex) {
           err.textContent = ex.message;
         }
@@ -2702,7 +2776,7 @@ async function routeView(key, context) {
   if (route === 'analytics') return analyticsView();
   if (route === 'accounts') return accountsView();
   if (route === 'connect') return connectView();
-  if (route === 'profile' || route === 'settings') return profileView();
+  if (route === 'profile' || route === 'settings') return profileView(arg);
   return projectsView();
 }
 
@@ -2711,6 +2785,33 @@ async function render({ reload = true } = {}) {
   const seq = ++renderSeq;
   clearInterval(state.twoFactorTicker);
   tip.hidden = true;
+  disposePasscodeView();
+  if (state.appLock && (state.appLock.locked || state.appLock.setup || state.lockMode)) {
+    navigation.clear();
+    const mode = state.lockMode || (state.appLock.setup ? 'setup' : 'unlock');
+    const unlock = async () => { state.lockMode=null; await boot(false); };
+    app.replaceChildren(passcodeView({mode,
+      biometric:state.appLock.biometric && !pwa.passkeyBlocker(state.config),
+      available:state.appLock.passkey_available && !pwa.passkeyBlocker(state.config),
+      biometricName:pwa.biometryName(),touch:pwa.deviceName()==='Mac',
+      initialBiometric:mode==='biometric'?!state.appLock.biometric:!!state.appLock.biometric,
+      autoBiometric:!!state.autoBiometric,
+      submit:async input=>{
+        if(input.action==='verify'){await lockRequest('POST','/unlock',{code:input.code});return;}
+        if(mode==='unlock')await lockRequest('POST','/unlock',{code:input.code});
+        else if(mode==='biometric')await lockRequest('PUT','/settings',{code:input.code,current_code:input.code,biometric:input.biometric});
+        else await lockRequest('PUT','/settings',{code:input.code,current_code:input.current_code,biometric:input.biometric});
+        await unlock();
+      },
+      unlockBiometric:async()=>{await pwa.passkeyUnlock(lockRequest);await unlock();},
+      cancel:()=>{
+        if(state.lockMode){state.lockMode=null;render();}
+        else if(confirm(i18n.t('Выйти из аккаунта и сбросить код-пароль? Войдите заново привязанным способом. Неотправленные комментарии будут удалены.')))logout();
+      },
+    }));
+    state.autoBiometric=false;
+    return;
+  }
   if(location.hash==='#/two-factor') {
     navigation.clear();
     const view=await twoFactorView();if(seq===renderSeq)app.replaceChildren(view);return;
@@ -2752,38 +2853,88 @@ function paintInboxCount() {
   else link?.append(h('span', { class: 'badge' }, String(state.inboxCount)));
 }
 
-async function boot() {
+async function lockRequest(method, path, body) {
+  if(path!=='/lock' && state.lockPromise)await state.lockPromise.catch(()=>{});
+  let response;
+  try { response=await fetch('/api/app-lock'+path,{method,headers:{...pwa.clientHeaders(),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined}); }
+  catch {throw new Error(i18n.t('Для разблокировки подключитесь к сети'));}
+  const data=await response.json().catch(()=>null);
+  if(!response.ok){
+    const messages={'incorrect app passcode':'Неверный код-пароль','passcode temporarily locked':'Слишком много попыток. Подождите и попробуйте снова.',
+      'sign in again to set an app passcode':'Войдите в аккаунт заново, чтобы создать код-пароль',
+      'session expired':'Сессия завершилась. Войдите снова.', 'add a passkey first':'Сначала добавьте passkey',
+      'passkey sign-in failed':'Не удалось подтвердить разблокировку'};
+    if(response.status===401 && data?.error==='session expired') {
+      state.appLock=null;state.me=null;localStorage.removeItem('ait-app-lock-configured');render();
+    }
+    throw new Error(i18n.t(messages[data?.error]||data?.error||'Не удалось подтвердить разблокировку'));
+  }
+  return data;
+}
+
+async function lockApplication() {
+  if(!state.appLock?.configured)return;
+  state.appLock.locked=true;state.me=null;state.accounts=[];state.lockMode=null;
+  state.autoBiometric=true;
+  navigation.clear();
+  for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
+  pwa.hidePrivateData();
+  state.lockPromise=lockRequest('POST','/lock');
+  await render();
+  try{const locked=await state.lockPromise;if(state.appLock?.locked)state.appLock=locked;}catch{/* Keep the local screen locked when disconnected. */}
+}
+
+async function boot(relock = true) {
   booting = true;
   navigation.clear();
   const configPromise = state.config ? Promise.resolve(state.config) : fetch('/api/config').then((r) => r.json()).catch(() => null);
   try {
-    const [config, res] = await Promise.all([configPromise, fetch('/api/me',{headers:pwa.clientHeaders()})]);
-    state.config = config;
-    state.me = res.ok ? await res.json() : null;
-    if (state.me) {
-      const [accounts] = await Promise.all([api('GET', '/accounts'), refreshInboxCount().catch(() => {})]);
-      state.accounts = accounts;
-      pwa.pushEnabled(api).catch(() => {});
+    const [config,lock] = await Promise.all([configPromise,fetch('/api/app-lock'+(relock?'/lock':'/status'),{method:relock?'POST':'GET',headers:pwa.clientHeaders(),cache:'no-store'})]);
+    state.config=config;
+    state.appLock=lock.ok?await lock.json():null;
+    if(lock.status!==401 && !lock.ok)throw new Error('Lock status unavailable');
+    if(state.appLock?.configured){localStorage.setItem('ait-app-lock-configured','1');}
+    else localStorage.removeItem('ait-app-lock-configured');
+    if(state.appLock?.locked){state.me=null;state.accounts=[];state.autoBiometric=true;pwa.hidePrivateData();}
+    else {
+      const res=await fetch('/api/me',{headers:pwa.clientHeaders()});
+      state.me=res.ok?await res.json():null;
+      if(res.status===423){state.appLock={...(state.appLock||{}),configured:true,locked:true};state.autoBiometric=true;}
+      if(state.me?.kind==='human' && state.appLock && !state.appLock.configured)state.appLock.setup=true;
+      if(state.me && !state.appLock?.setup){
+        const [accounts]=await Promise.all([api('GET','/accounts'),refreshInboxCount().catch(()=>{})]);state.accounts=accounts;
+        pwa.pushEnabled(api).catch(()=>{});
+      }
     }
   } catch {
-    state.me = null;
+    state.me=null;
+    if(localStorage.getItem('ait-app-lock-configured'))state.appLock={configured:true,locked:true,biometric:false};
   }
-  booting = false;
-  await render();
-  finishSplash();
-  const feedback = new URLSearchParams(location.search);
-  if (feedback.has('auth_error') || feedback.has('auth')) {
-    toast(feedback.get('auth_error') || (feedback.get('auth') === 'linked' ? i18n.t('Способ входа привязан') : i18n.t('Вы вошли в аккаунт')));
-    history.replaceState(null, '', location.pathname + location.hash);
+  booting=false;
+  await render();finishSplash();
+  const feedback=new URLSearchParams(location.search);
+  if(feedback.has('auth_error')||feedback.has('auth')){
+    toast(feedback.get('auth_error')||(feedback.get('auth')==='linked'?i18n.t('Способ входа привязан'):i18n.t('Вы вошли в аккаунт')));
+    history.replaceState(null,'',location.pathname+location.hash);
   }
-  if (state.me) {
-    offerPasskey();
-    flushOutbox();
-  }
+  if(state.me && !state.appLock?.setup){offerPasskey();flushOutbox();checkAppUpdate();}
 }
 
+let hiddenAt=0,lockTimer;
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){
+    hiddenAt=Date.now();
+    if(state.appLock?.configured)lockTimer=setTimeout(()=>lockApplication(),60_000);
+  } else {
+    clearTimeout(lockTimer);
+    if(state.appLock?.configured && hiddenAt && Date.now()-hiddenAt>=60_000)lockApplication();
+    hiddenAt=0;
+    checkAppUpdate();
+  }
+});
+
 installPullToRefresh({
-  enabled: () => !!state.me && !booting,
+  enabled: () => !!state.me && !booting && !state.appLock?.locked && !state.appLock?.setup && !state.lockMode,
   refresh: async () => {
     await navigation.refresh({ rebuild: true });
     await refreshInboxCount();
@@ -2797,6 +2948,7 @@ pwa.registerServiceWorker((url) => {
 });
 pwa.onInstallChange(() => /^#\/(profile|settings)/.test(location.hash) && render());
 addEventListener('online', () => {
+  checkAppUpdate();
   flushOutbox();
   if (!booting) {
     if (state.me) Promise.resolve(navigation.refresh({ rebuild: true })).catch(() => {});
@@ -2808,9 +2960,11 @@ addEventListener('hashchange', () => { if (!booting) render({ reload: false }); 
 // Browser Back/Forward must not fight the saved scroll position of each tab.
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 setInterval(() => {
-  if (!state.me || document.hidden || document.querySelector('dialog[open]')) return;
+  if (!state.me || state.appLock?.setup || state.lockMode || document.hidden || document.querySelector('dialog[open]')) return;
   state.poll?.().catch(() => {});
   refreshInboxCount().catch(() => {});
 }, 8000);
 
 boot();
+
+setInterval(()=>{if(!document.hidden)checkAppUpdate();},5*60_000);

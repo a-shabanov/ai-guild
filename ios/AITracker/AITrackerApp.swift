@@ -42,6 +42,7 @@ struct AITrackerApp: App {
                 switch state.phase {
                 case .restoring: ProgressView()
                 case .signedOut: LoginView()
+                case .settingPasscode: PasscodeSetupView()
                 case .locked: LockView()
                 case .ready: RootView()
                 }
@@ -84,6 +85,7 @@ struct RootView: View {
                 .tag(AppTab.analytics)
             SettingsView()
                 .tabItem { Label("Настройки", systemImage: "gearshape") }
+                .badge(state.availableUpdate == nil ? nil : "•")
                 .tag(AppTab.settings)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -97,60 +99,48 @@ struct RootView: View {
             }
         }
         .animation(.default, value: Connectivity.shared.offline)
+        .alert("Защита приложения", isPresented: Binding(
+            get: { state.securityNotice != nil },
+            set: { if !$0 { state.securityNotice = nil } }
+        )) {
+            Button("Понятно") { state.securityNotice = nil }
+        } message: { Text(state.securityNotice ?? "") }
     }
 }
 
 struct LockView: View {
     @Environment(AppState.self) private var state
+    @State private var digits = ""
     @State private var error: String?
     @State private var busy = false
     @State private var confirming = false
 
     var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            Image(systemName: "lock.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
-            Text("AI Guild").font(.title.bold())
-            ErrorBanner(message: error)
-                .multilineTextAlignment(.center)
-            Spacer()
-            Button {
-                Task { await unlock() }
-            } label: {
-                Label("Войти с \(Biometrics.name)", systemImage: Biometrics.icon)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(busy)
-            Button("Войти по ключу") { confirming = true }
-                .padding(.bottom)
+        CodeEntryView(title: "Введите код-пароль",
+            subtitle: "Разблокировать приложение",
+            digits: $digits, error: error, busy: busy,
+            biometric: state.biometricLock ? { Task { await unlock() } } : nil,
+            canType: AppPasscode.isConfigured,
+            completed: { Task { await unlock(code: digits) } }) {
+                Button("Забыли код-пароль?") { confirming = true }.font(.footnote).disabled(busy)
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.appSurface)
-        .task { await unlock() }
-        .confirmationDialog("Выйти и войти по ключу?", isPresented: $confirming, titleVisibility: .visible) {
+        .task { if state.biometricLock { await unlock() } }
+        .confirmationDialog("Выйти из аккаунта и сбросить код-пароль?", isPresented: $confirming, titleVisibility: .visible) {
             Button("Выйти", role: .destructive) { state.signOut() }
         } message: {
-            Text("Сохранённый вход и неотправленные комментарии будут удалены с этого устройства.")
+            Text("Войдите заново через passkey, Google, Telegram или API-ключ. Неотправленные комментарии будут удалены с этого устройства.")
         }
     }
 
-    private func unlock() async {
+    private func unlock(code: String? = nil) async {
         guard !busy else { return }
-        busy = true
-        defer { busy = false }
+        busy = true; error = nil
+        defer { busy = false; digits = "" }
         do {
-            try await state.unlock()
-            error = nil
+            if let code { try await state.unlock(code: code) }
+            else { try await state.unlock() }
         } catch let failure as BiometricError where failure.cancelled {
             error = nil
-        } catch {
-            self.error = error.localizedDescription
-        }
+        } catch { self.error = error.localizedDescription }
     }
 }

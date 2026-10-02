@@ -14,6 +14,7 @@ import * as svc from './service.ts';
 import * as social from './social-auth.ts';
 import * as twoFactor from './two-factor.ts';
 import * as devices from './devices.ts';
+import * as appLock from './app-lock.ts';
 
 export const SESSION_COOKIE = 'ait_session';
 const TWO_FACTOR_COOKIE = 'ait_two_factor';
@@ -304,6 +305,30 @@ export function restRouter(): Router {
     else {
       await startSession(req,res,result.actor,result.provider,result.identityId);
     }
+  });
+
+  // These endpoints reveal only lock metadata while a saved session is locked.
+  r.use('/app-lock', async (req,res,next) => {
+    res.set('Cache-Control','no-store');
+    if (req.method !== 'GET') sameOrigin(req);
+    req.actor = await authenticate(keyFromRequest(req),false,true);
+    appLock.sessionHash(keyFromRequest(req));
+    next();
+  });
+  r.get('/app-lock/status',async(req,res)=>{res.json(await appLock.status(req.actor,keyFromRequest(req)));});
+  r.post('/app-lock/lock',async(req,res)=>{res.json(await appLock.lock(req.actor,keyFromRequest(req)));});
+  r.post('/app-lock/unlock',jsonBody,async(req,res)=>{res.json(await appLock.unlock(req.actor,keyFromRequest(req),parse(S.AppLockUnlock,req.body).code));});
+  r.put('/app-lock/settings',jsonBody,async(req,res)=>{res.json(await appLock.configure(req.actor,keyFromRequest(req),parse(S.AppLockConfigure,req.body)));});
+  r.post('/app-lock/passkey/options',async(req,res)=>{
+    const status=await appLock.status(req.actor,keyFromRequest(req));
+    if(!status.configured || !status.biometric) throw new HttpError(403,'passkey unlock is disabled');
+    res.json(await passkeys.unlockOptions(req.actor,appLock.sessionHash(keyFromRequest(req))));
+  });
+  r.post('/app-lock/passkey/verify',jsonBody,async(req,res)=>{
+    const status=await appLock.status(req.actor,keyFromRequest(req));
+    if(!status.configured || !status.biometric) throw new HttpError(403,'passkey unlock is disabled');
+    await passkeys.verifyLogin(parse(S.PasskeyResponse,req.body),{actor:req.actor,sessionHash:appLock.sessionHash(keyFromRequest(req))});
+    await appLock.unlockWithPasskey(req.actor,keyFromRequest(req)); res.json({ok:true});
   });
 
   r.use(requireAuth);

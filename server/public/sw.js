@@ -1,6 +1,6 @@
-// AI Guild service worker: offline shell, cached reads, push notifications, share target.
+// AI Guild service worker: offline shell, settings and update status, cached reads, push notifications, share target.
 // VERSION is written by scripts/version.mjs. Each release caches its complete shell.
-const VERSION = 'v0.3.8-b16';
+const VERSION = 'v0.3.9-b17';
 const SHELL = `shell-${VERSION}`;
 const API = `api-${VERSION}`; // last successful GET responses, for reading offline
 const FILES = `files-${VERSION}`; // image attachments
@@ -13,6 +13,7 @@ const SHELL_FILES = [
   '/',
   '/style.css',
   '/app.js',
+  '/app-lock-view.js',
   '/version.js',
   '/navigation.js',
   '/pull-to-refresh.js',
@@ -82,7 +83,7 @@ async function apiRead(request) {
     const res = await fetch(request);
     if (await validApiRead(res)) await cache.put(request, res.clone()).catch(() => {});
     // The session ended: nothing cached may outlive it.
-    if (res.status === 401) await dropPrivate();
+    if (res.status === 401 || res.status === 423) await dropPrivate();
     return res;
   } catch (err) {
     const cached = await cache.match(request);
@@ -152,7 +153,8 @@ self.addEventListener('fetch', (event) => {
   }
   if (request.method !== 'GET') return;
   if (url.pathname === '/mcp' || url.pathname === '/healthz') return;
-  if (url.pathname.startsWith('/api/auth/')) return;
+  if (url.pathname.startsWith('/api/auth/') || url.pathname.startsWith('/api/app-lock/')) return;
+  if (url.pathname === '/api/config' && url.searchParams.has('update')) return; // Live release checks must never use cached config.
   if (url.pathname === '/api/push/preferences') return; // Never offer stale notification switches offline.
   if (url.pathname === '/api/devices' || url.pathname.startsWith('/api/devices/')) return;
 

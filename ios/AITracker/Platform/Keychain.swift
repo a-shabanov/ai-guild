@@ -34,24 +34,50 @@ enum Keychain {
         return String(data: data, encoding: .utf8)
     }
 
-    /// - Returns: false when the device could not bind the item to biometrics and it was
-    ///   stored as an ordinary device-only item instead.
-    @discardableResult
-    static func save(_ credential: String, biometric: Bool) -> Bool {
-        delete()
-        var q = query
-        q[kSecValueData as String] = Data(credential.utf8)
-        if biometric,
-           let access = SecAccessControlCreateWithFlags(
-               nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, .biometryCurrentSet, nil)
-        {
-            var bound = q
-            bound[kSecAttrAccessControl as String] = access
-            if SecItemAdd(bound as CFDictionary, nil) == errSecSuccess { return true }
+    /// Never falls back to an unprotected copy if biometric binding fails.
+    static func save(_ credential: String, biometric: Bool) throws {
+        if biometric {
+            guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, .biometryCurrentSet, nil) else {
+                throw APIError.server("Не удалось включить \(Biometrics.name)")
+            }
+            try writeData(Data(credential.utf8), account: account, access: access)
+        } else {
+            try writeData(Data(credential.utf8), account: account)
         }
-        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        SecItemAdd(q as CFDictionary, nil)
-        return !biometric
+    }
+
+    static func readData(account: String) -> Data? {
+        var q = query; q[kSecAttrAccount as String] = account; q[kSecReturnData as String] = true
+        let silent = LAContext(); silent.interactionNotAllowed = true
+        q[kSecUseAuthenticationContext as String] = silent
+        var out: AnyObject?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else { return nil }
+        return out as? Data
+    }
+
+    static func writeData(_ data: Data, account: String, access: SecAccessControl? = nil) throws {
+        var q = query; q[kSecAttrAccount as String] = account
+        // Replace atomically where possible, preserving an existing record on failure.
+        let update: [String: Any] = [kSecValueData as String: data]
+        if access == nil && SecItemUpdate(q as CFDictionary, update as CFDictionary) == errSecSuccess { return }
+        var item = q; item[kSecValueData as String] = data
+        if let access { item[kSecAttrAccessControl as String] = access }
+        else { item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly }
+        let added = SecItemAdd(item as CFDictionary, nil)
+        if added == errSecDuplicateItem {
+            // The credential copy changes its access policy only after authentication.
+            SecItemDelete(q as CFDictionary)
+            guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else { throw APIError.server("Не удалось сохранить защищённый вход") }
+        } else if added != errSecSuccess {
+            #if DEBUG
+            print("Keychain write failed with OSStatus \(added)")
+            #endif
+            throw APIError.server("Не удалось сохранить защищённый вход")
+        }
+    }
+    static func deleteData(account: String) {
+        var q = query; q[kSecAttrAccount as String] = account
+        SecItemDelete(q as CFDictionary)
     }
 
     static func delete() {

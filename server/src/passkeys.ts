@@ -14,20 +14,20 @@ import { HttpError } from './errors.ts';
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
 // Challenges are single-use and short-lived, so process memory is enough for a single server.
-const challenges = new Map<string, { challenge: string; accountId?: number; expires: number }>();
+const challenges = new Map<string, { challenge: string; accountId?: number; purpose: string; expires: number }>();
 
-function putChallenge(challenge: string, accountId?: number): string {
+function putChallenge(challenge: string, accountId?: number, purpose = 'register'): string {
   const now = Date.now();
   for (const [id, c] of challenges) if (c.expires < now) challenges.delete(id);
   const id = randomUUID();
-  challenges.set(id, { challenge, accountId, expires: now + CHALLENGE_TTL_MS });
+  challenges.set(id, { challenge, accountId, purpose, expires: now + CHALLENGE_TTL_MS });
   return id;
 }
 
-function takeChallenge(id: unknown, accountId?: number): string {
+function takeChallenge(id: unknown, accountId?: number, purpose = 'register'): string {
   const entry = typeof id === 'string' ? challenges.get(id) : undefined;
   if (typeof id === 'string') challenges.delete(id);
-  if (!entry || entry.expires < Date.now() || entry.accountId !== accountId) {
+  if (!entry || entry.expires < Date.now() || entry.accountId !== accountId || entry.purpose !== purpose) {
     throw new HttpError(400, 'passkey challenge expired, try again');
   }
   return entry.challenge;
@@ -115,11 +115,11 @@ export async function loginOptions(): Promise<Row> {
     rpID: config.webauthn.rpId,
     userVerification: 'required',
   });
-  return { challenge_id: putChallenge(options.challenge), options };
+  return { challenge_id: putChallenge(options.challenge, undefined, 'login'), options };
 }
 
-export async function verifyLogin(input: { challenge_id: string; response: any }): Promise<Actor> {
-  const expectedChallenge = takeChallenge(input.challenge_id);
+export async function verifyLogin(input: { challenge_id: string; response: any }, unlock?: { actor: Actor; sessionHash: string }): Promise<Actor> {
+  const expectedChallenge = takeChallenge(input.challenge_id, unlock?.actor.id, unlock ? `unlock:${unlock.sessionHash}` : 'login');
   const failed = new HttpError(401, 'passkey sign-in failed');
   const row = await q1(
     `select p.*, a.name as account_name, a.kind, a.system, a.role, a.disabled
@@ -127,7 +127,7 @@ export async function verifyLogin(input: { challenge_id: string; response: any }
       where p.credential_id = $1`,
     [String(input.response?.id ?? '')],
   );
-  if (!row || row.disabled) throw failed;
+  if (!row || row.disabled || (unlock && row.account_id !== unlock.actor.id)) throw failed;
   let result;
   try {
     result = await verifyAuthenticationResponse({
@@ -160,4 +160,12 @@ export async function verifyLogin(input: { challenge_id: string; response: any }
     role: row.role,
     passkeyId: row.id,
   };
+}
+
+export async function unlockOptions(actor: Actor, sessionHash: string): Promise<Row> {
+  const credentials = await q('select credential_id,transports from passkeys where account_id=$1', [actor.id]);
+  if (!credentials.length) throw new HttpError(400, 'add a passkey first');
+  const options = await generateAuthenticationOptions({ rpID: config.webauthn.rpId, userVerification: 'required',
+    allowCredentials: credentials.map(p => ({id:p.credential_id,transports:p.transports})) });
+  return {challenge_id:putChallenge(options.challenge,actor.id,`unlock:${sessionHash}`),options};
 }

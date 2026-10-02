@@ -20,7 +20,7 @@
 	<key>TrackerServer</key>
 	<string>$(TRACKER_SERVER)</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Face ID защищает вход в AI Guild вместо ввода ключа.</string>
+	<string>Face ID разблокирует AI Guild вместо ввода код-пароля приложения.</string>
 	<!-- Set in Config.xcconfig; empty means passkeys and remote push are off. -->
 	<key>TrackerDomain</key>
 	<string>$(TRACKER_DOMAIN)</string>

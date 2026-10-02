@@ -95,7 +95,7 @@ struct LoginView: View {
                     }
                     ErrorBanner(message: error)
                 } footer: {
-                    Text("После входа в настройках можно включить \(Biometrics.name), чтобы не вводить ключ.")
+                    Text("После входа в настройках можно включить \(Biometrics.name) для быстрой разблокировки приложения вместо ввода код-пароля.")
                 }
                 }
             }

@@ -1699,3 +1699,33 @@ button.big {
     transition: none;
   }
 }
+
+/* App access is distinct from signing in to an account. */
+.passcode-screen { min-height: 100svh; display: grid; place-items: center; padding: max(24px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom)); }
+.passcode-panel { width: min(100%,340px); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.passcode-brand-icon { width: 40px; height: 40px; border-radius: 10px; margin-bottom: 2px; }
+.passcode-brand { font-size: 21px; font-weight: 650; }
+.passcode-panel h1 { font-size: 22px; margin: 12px 0 0; letter-spacing: -.025em; }
+.passcode-subtitle { font-size: 14px; margin: 0; max-width: 280px; }
+.passcode-dots { display:flex; gap:17px; padding:14px 0 4px; }
+.passcode-dots span { width:12px; height:12px; border-radius:50%; background:var(--border); transition:background .1s; }
+.passcode-dots span.filled { background:var(--accent); }
+.passcode-error { min-height: 34px; margin:0; font-size:13px; }
+.passcode-choice { display:flex; gap:10px; align-items:center; text-align:left; font-size:13px; }
+.passcode-choice input { width:18px; height:18px; margin:0; accent-color:var(--accent); }
+.passcode-keypad { display:grid; grid-template-columns:repeat(3,74px); gap:14px 22px; padding-top:8px; }
+.passcode-keypad button { width:74px; height:62px; min-height:44px; padding:0; border:0; border-radius:20px; color:var(--text); font-size:29px; font-weight:400; touch-action:manipulation; }
+.passcode-digit { background:var(--surface-2); }
+.passcode-keypad .passcode-action { background:transparent; font-size:25px; color:var(--accent); }
+.passcode-action svg { width:32px; height:32px; vertical-align:middle; }
+.passcode-cancel { margin-top:4px; font-size:13px; }
+@media (max-height:700px) { .passcode-panel {gap:10px;} .passcode-keypad {gap:10px 22px;} .passcode-brand-icon{width:32px;height:32px;} .passcode-panel h1{margin-top:4px;} }
+
+.settings-link {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px;min-height:70px;border-bottom:1px solid var(--border);color:var(--text);text-decoration:none}
+.settings-link:last-child {border-bottom:0}
+.settings-link:hover {background:var(--surface-2)}
+.settings-link .chip {flex-shrink:0}
+.update-status {margin:0;color:var(--accent-text)}
+@media(max-width:600px){.settings-link {padding:16px}.settings-link .chip {font-size:10px}}
+
+.settings-detail button {white-space:normal;max-width:100%;text-align:left}
