@@ -1,0 +1,35 @@
+name: Publish GitHub releases
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - version.json
+      - docs/releases/**
+      - scripts/releases.mjs
+      - .github/workflows/releases.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-releases
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate versioned notes and publish missing releases
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/releases.mjs --publish
