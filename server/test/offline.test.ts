@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import vm from 'node:vm';
 
 function worker() {
@@ -24,12 +24,20 @@ function worker() {
   };
   vm.createContext(context);
   vm.runInContext(readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8') +
-    '\nglobalThis.read = apiRead;', context);
+    '\nglobalThis.read = apiRead;globalThis.shellFiles = SHELL_FILES;', context);
   const request = new Request('https://tracker.test/api/tasks');
-  return { storage, deleted, request, read: () => context.read(request) as Promise<Response>,
+  return { storage, deleted, request, shellFiles: context.shellFiles as string[], read: () => context.read(request) as Promise<Response>,
     failWrites: () => { writable = false; },
     offline: () => {network = null;}, respond: (response: () => Response) => {network = response;} };
 }
+
+test('every mandatory offline shell asset is present in the release', () => {
+  for (const asset of worker().shellFiles) {
+    const path = new URL(asset, 'https://tracker.test').pathname;
+    const source = new URL('../public' + (path === '/' ? '/index.html' : path), import.meta.url);
+    assert(existsSync(source), `Missing offline shell asset: ${asset}`);
+  }
+});
 
 test('offline cached JSON remains readable; missing and corrupt cache entries return an explicit offline response', async () => {
   const f = worker();

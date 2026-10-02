@@ -1,6 +1,6 @@
 {
   "name": "ai-tracker",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "private": true,
   "type": "module",
   "description": "Task & time tracker for AI agents (REST + MCP)",
