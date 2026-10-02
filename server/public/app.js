@@ -3,6 +3,7 @@ import * as i18n from './i18n.js';
 // so text coming from agents cannot inject markup.
 
 import * as pwa from './pwa.js';
+import { createNavigation } from './navigation.js';
 
 const STATUS = {
   todo: i18n.t('К выполнению'),
@@ -678,18 +679,28 @@ function dialog(title, build) {
 
 const filters = { status: 'open', assignee: '', project: '', level: '', kind: '', q: '' };
 
-async function tasksView() {
+async function tasksView(context) {
   const list = h('div', { class: 'card task-list' }, h('div', { class: 'empty' }, i18n.t('Загрузка…')));
-  const projects = await api('GET', '/projects').catch(() => []);
+  const projectsPromise = api('GET', '/projects').catch(() => []);
+  let request = 0;
+  let snapshot;
 
   const load = async () => {
+    const seq = ++request;
     const qs = new URLSearchParams(Object.entries(filters).filter(([, v]) => v));
     try {
       const tasks = await api('GET', `/tasks?${qs}`);
+      if (seq !== request) return;
+      const next = JSON.stringify(tasks);
+      if (snapshot === next) return;
+      snapshot = next;
       list.replaceChildren(
         ...(tasks.length ? treeRows(tasks) : [h('div', { class: 'empty' }, i18n.t('Задач по этим фильтрам нет'))]),
       );
     } catch (ex) {
+      if (seq !== request) return;
+      if (ex.offline && snapshot !== undefined) return;
+      snapshot = undefined;
       list.replaceChildren(h('div', { class: 'empty error' }, ex.message));
     }
   };
@@ -703,7 +714,8 @@ async function tasksView() {
   let debounce;
 
   load();
-  state.poll = load;
+  context.setPoll(load);
+  const projects = await projectsPromise;
 
   return shell(
     'tasks',
@@ -985,7 +997,7 @@ function fileCard(a, all = [a]) {
   return h('a', { class: 'file', href: a.url, target: '_blank', onclick: canPreview(a) ? open : null }, preview, name);
 }
 
-async function taskView(id) {
+async function taskView(id, context) {
   const head = h('div');
   const body = h('div');
   const timeline = h('div', { class: 'timeline' });
@@ -1002,7 +1014,7 @@ async function taskView(id) {
   };
 
   const paint = (t) => {
-    document.title = `#${t.id} ${t.title} · AI Guild`;
+    context.setTitle(`#${t.id} ${t.title} · AI Guild`);
     head.replaceChildren(...[
       h(
         'nav',
@@ -1245,7 +1257,7 @@ async function taskView(id) {
       snapshot = next;
       paint(t);
       // The person is looking at the task: what happened in it is no longer news.
-      if (state.me.kind === 'human' && !document.hidden) {
+      if (state.me?.kind === 'human' && !document.hidden && context.isActive()) {
         api('POST', '/inbox/read', { task_id: id }).then(refreshInboxCount).catch(() => {});
       }
     }
@@ -1256,7 +1268,7 @@ async function taskView(id) {
   } catch (ex) {
     return shell('tasks', h('div', { class: 'empty error' }, ex.message), h('p', { style: 'text-align:center' }, h('a', { href: '#/tasks' }, i18n.t('← Все задачи'))));
   }
-  state.poll = load;
+  context.setPoll(load);
 
   const text = h('textarea', { placeholder: i18n.t('Комментарий для агентов. Упомяните через @имя; картинку можно вставить из буфера.'), required: true });
   const pasted = [];
@@ -1475,8 +1487,10 @@ function projectDialog(p, done) {
 }
 
 async function projectsView() {
-  const projects = await api('GET', '/projects?details=1');
-  const loose = await api('GET', '/tasks?limit=500&status=').then((all) => all.filter((t) => !t.project).length, () => 0);
+  const [projects, loose] = await Promise.all([
+    api('GET', '/projects?details=1'),
+    api('GET', '/tasks?limit=500&status=').then((all) => all.filter((t) => !t.project).length, () => 0),
+  ]);
   return shell(
     'projects',
     h('div', { class: 'page-head' }, h('h1', null, i18n.t('Проекты')), h('span', { class: 'spacer' }), h('button', { class: 'primary', onclick: () => projectDialog(null, (p) => (location.hash = `#/projects/${encodeURIComponent(p.name)}`)) }, i18n.t('Новый проект'))),
@@ -1487,11 +1501,11 @@ async function projectsView() {
   );
 }
 
-async function projectView(name) {
+async function projectView(name, context) {
   const projects = await api('GET', '/projects?details=1');
   const p = projects.find((x) => x.name.toLowerCase() === name.toLowerCase());
   if (!p) return shell('projects', h('div', { class: 'empty' }, i18n.t`Проекта «${name}» нет`), h('p', { style: 'text-align:center' }, h('a', { href: '#/projects' }, i18n.t('← Все проекты'))));
-  document.title = `${p.name} · AI Guild`;
+  context.setTitle(`${p.name} · AI Guild`);
 
   const list = h('div', { class: 'card task-list' });
   let only = 'open';
@@ -1501,7 +1515,7 @@ async function projectView(name) {
     list.replaceChildren(...(tasks.length ? treeRows(tasks) : [h('div', { class: 'empty' }, only === 'open' ? i18n.t('Открытых задач нет') : i18n.t('Задач нет'))]));
   };
   await load();
-  state.poll = load;
+  context.setPoll(load);
 
   const tile = (label, value, hint) => h('div', { class: 'card pad' }, h('div', { class: 'tile-label' }, label), h('div', { class: 'tile-value' }, value), hint && h('div', { class: 'muted small' }, hint));
   const st = p.tasks_by_status;
@@ -2162,11 +2176,14 @@ const COLUMN_HINT = {
 const DONE_SHOWN = 20;
 const board = { project: '', work: 'work', kind: '', assignee: '', allDone: false };
 
-async function boardView(project) {
+async function boardView(project, context) {
   if (project !== undefined) board.project = project;
+  const selection = { ...board };
   const columns = h('div', { class: 'board' });
   const err = h('div', { class: 'error small', role: 'alert' });
-  const projects = await api('GET', '/projects').catch(() => []);
+  const projectsPromise = api('GET', '/projects').catch(() => []);
+  let request = 0;
+  let snapshot;
 
   const move = async (id, status) => {
     err.textContent = '';
@@ -2197,7 +2214,7 @@ async function boardView(project) {
         { class: 'task-meta', style: 'flex-wrap:wrap' },
         levelChip(t.level),
         kindChip(t.kind),
-        !board.project && t.project && h('span', null, t.project),
+        !selection.project && t.project && h('span', null, t.project),
         t.child_count > 0 && h('span', { title: i18n.t('Готово из вложенных') }, `${t.child_done}/${t.child_count}`),
         ['high', 'urgent'].includes(t.priority) && h('span', { class: `prio-${t.priority}` }, PRIORITY[t.priority]),
       ),
@@ -2224,24 +2241,32 @@ async function boardView(project) {
     );
 
   const load = async () => {
+    const seq = ++request;
     const qs = new URLSearchParams({ limit: '500', status: BOARD_COLUMNS.join(',') });
-    if (board.project) qs.set('project', board.project);
-    if (board.kind) qs.set('kind', board.kind);
-    if (board.assignee) qs.set('assignee', board.assignee);
-    if (board.work === 'work') qs.set('level', 'task,subtask');
-    else if (board.work === 'plan') qs.set('level', 'epic,story');
+    if (selection.project) qs.set('project', selection.project);
+    if (selection.kind) qs.set('kind', selection.kind);
+    if (selection.assignee) qs.set('assignee', selection.assignee);
+    if (selection.work === 'work') qs.set('level', 'task,subtask');
+    else if (selection.work === 'plan') qs.set('level', 'epic,story');
     let tasks;
     try {
       tasks = await api('GET', `/tasks?${qs}`);
     } catch (ex) {
+      if (seq !== request) return;
+      if (ex.offline && snapshot !== undefined) return;
+      snapshot = undefined;
       columns.replaceChildren(h('div', { class: 'empty error' }, ex.message));
       return;
     }
+    if (seq !== request) return;
+    const next = JSON.stringify([tasks, selection.allDone]);
+    if (snapshot === next) return;
+    snapshot = next;
     const recent = (a, b) => b.updated_at.localeCompare(a.updated_at);
     columns.replaceChildren(
       ...BOARD_COLUMNS.map((status) => {
         const all = tasks.filter((t) => t.status === status).sort(recent);
-        const shown = status === 'done' && !board.allDone ? all.slice(0, DONE_SHOWN) : all;
+        const shown = status === 'done' && !selection.allDone ? all.slice(0, DONE_SHOWN) : all;
         return h(
           'section',
           {
@@ -2267,33 +2292,34 @@ async function boardView(project) {
           ),
           shown.length ? shown.map(card) : h('div', { class: 'muted small board-empty' }, i18n.t('Пусто')),
           all.length > shown.length &&
-            h('button', { class: 'ghost small', onclick: () => ((board.allDone = true), load()) }, i18n.t`Показать все ${all.length}`),
+            h('button', { class: 'ghost small', onclick: () => ((selection.allDone = true), load()) }, i18n.t`Показать все ${all.length}`),
         );
       }),
     );
   };
   const bind = (key) => ({
     onchange: (e) => {
-      board[key] = e.target.value;
-      if (key === 'project') history.replaceState(null, '', board.project ? `#/board/${encodeURIComponent(board.project)}` : '#/board');
+      selection[key] = e.target.value;
+      board[key] = selection[key];
+      if (key === 'project') history.replaceState(null, '', selection.project ? `#/board/${encodeURIComponent(selection.project)}` : '#/board');
       load();
     },
   });
   const option = (value, label, current) => h('option', { value, selected: value === current }, label);
 
-  await load();
-  state.poll = load;
+  const [projects] = await Promise.all([projectsPromise, load()]);
+  context.setPoll(load);
 
   return shell(
     'board',
-    h('div', { class: 'page-head' }, h('h1', null, i18n.t('Доска')), h('span', { class: 'spacer' }), h('button', { class: 'primary', onclick: () => newTaskDialog(projects, { project: board.project }) }, i18n.t('Новая задача'))),
+    h('div', { class: 'page-head' }, h('h1', null, i18n.t('Доска')), h('span', { class: 'spacer' }), h('button', { class: 'primary', onclick: () => newTaskDialog(projects, { project: selection.project }) }, i18n.t('Новая задача'))),
     h(
       'div',
       { class: 'filters' },
-      h('select', { 'aria-label': i18n.t('Проект'), ...bind('project') }, option('', i18n.t('Все проекты'), board.project), projects.map((p) => option(p, p, board.project))),
-      h('select', { 'aria-label': i18n.t('Уровень'), ...bind('work') }, option('work', i18n.t('Таски и подтаски'), board.work), option('plan', i18n.t('Эпики и стори'), board.work), option('all', i18n.t('Все уровни'), board.work)),
-      h('select', { 'aria-label': i18n.t('Тип'), ...bind('kind') }, option('', i18n.t('Все типы'), board.kind), Object.entries(KIND).map(([v, l]) => option(v, l, board.kind))),
-      h('select', { 'aria-label': i18n.t('Исполнитель'), ...bind('assignee') }, option('', i18n.t('Любой исполнитель'), board.assignee), state.accounts.filter((a) => !a.disabled).map((a) => option(a.name, a.name, board.assignee))),
+      h('select', { 'aria-label': i18n.t('Проект'), ...bind('project') }, option('', i18n.t('Все проекты'), selection.project), projects.map((p) => option(p, p, selection.project))),
+      h('select', { 'aria-label': i18n.t('Уровень'), ...bind('work') }, option('work', i18n.t('Таски и подтаски'), selection.work), option('plan', i18n.t('Эпики и стори'), selection.work), option('all', i18n.t('Все уровни'), selection.work)),
+      h('select', { 'aria-label': i18n.t('Тип'), ...bind('kind') }, option('', i18n.t('Все типы'), selection.kind), Object.entries(KIND).map(([v, l]) => option(v, l, selection.kind))),
+      h('select', { 'aria-label': i18n.t('Исполнитель'), ...bind('assignee') }, option('', i18n.t('Любой исполнитель'), selection.assignee), state.accounts.filter((a) => !a.disabled).map((a) => option(a.name, a.name, selection.assignee))),
     ),
     h(
       'p',
@@ -2501,43 +2527,68 @@ function timelineFilters(projects, collapse, expand) {
 
 // ---------- router ----------
 
+const navigation = createNavigation({
+  load: routeView,
+  show: (view) => {
+    app.replaceChildren(...[view].flat());
+    paintInboxCount();
+  },
+  loading: (key) => {
+    const [, route] = key.split('/');
+    const labels = { tasks: i18n.t('Задачи'), projects: i18n.t('Проекты'), board: i18n.t('Доска'),
+      timeline: i18n.t('График'), inbox: i18n.t('Входящие'), analytics: i18n.t('Аналитика'),
+      accounts: i18n.t('Аккаунты'), connect: i18n.t('Подключение'), profile: i18n.t('Профиль') };
+    app.replaceChildren(...shell(route || 'projects',
+      h('div', { class: 'page-head' }, h('h1', null, labels[route] || i18n.t('Проекты'))),
+      h('div', { class: 'card empty', role: 'status', 'aria-busy': 'true' }, i18n.t('Загрузка…'))));
+  },
+  error: (key, ex) => state.me ? shell(key.split('/')[1], h('div', { class: 'empty error' }, ex.message)) : loginView(),
+  changed: (entry) => {
+    state.poll = entry ? () => Promise.resolve(navigation.refresh()) : null;
+    document.title = entry?.title || 'AI Guild';
+  },
+  getScroll: () => window.scrollY,
+  setScroll: (top) => window.scrollTo({ top, behavior: 'instant' }),
+  cacheable: (key) => /^#\/(projects|tasks|board|inbox|analytics|connect)\/?$/.test(key),
+});
+
+async function routeView(key, context) {
+  const [, route, arg] = key.split('/');
+  if (route === 'tasks' && arg) return taskView(Number(arg), context);
+  if (route === 'projects' && arg) return projectView(decodeURIComponent(arg), context);
+  if (route === 'tasks') return tasksView(context);
+  if (route === 'board') return boardView(arg ? decodeURIComponent(arg) : undefined, context);
+  if (route === 'timeline') return timelineView(arg ? decodeURIComponent(arg) : undefined);
+  if (route === 'inbox') return inboxView();
+  if (route === 'analytics') return analyticsView();
+  if (route === 'accounts') return accountsView();
+  if (route === 'connect') return connectView();
+  if (route === 'profile') return profileView();
+  return projectsView();
+}
+
 let renderSeq = 0;
-async function render() {
+async function render({ reload = true } = {}) {
   const seq = ++renderSeq;
   clearInterval(state.twoFactorTicker);
-  state.poll = null;
   tip.hidden = true;
-  document.title = 'AI Guild';
   if(location.hash==='#/two-factor') {
+    navigation.clear();
     const view=await twoFactorView();if(seq===renderSeq)app.replaceChildren(view);return;
   }
   if (location.hash.startsWith('#/invite/')) {
+    navigation.clear();
     const view = await invitationView(location.hash.slice('#/invite/'.length));
     if (seq === renderSeq) app.replaceChildren(view);
     return;
   }
-  if (!state.me) return app.replaceChildren(loginView());
-
-  const [, route, arg] = location.hash.split('/');
-  let view;
-  try {
-    if (route === 'tasks' && arg) view = await taskView(Number(arg));
-    else if (route === 'projects' && arg) view = await projectView(decodeURIComponent(arg));
-    else if (route === 'tasks') view = await tasksView();
-    else if (route === 'board') view = await boardView(arg ? decodeURIComponent(arg) : undefined);
-    else if (route === 'timeline') view = await timelineView(arg ? decodeURIComponent(arg) : undefined);
-    else if (route === 'inbox') view = await inboxView();
-    else if (route === 'analytics') view = await analyticsView();
-    else if (route === 'accounts') view = await accountsView();
-    else if (route === 'connect') view = connectView();
-    else if (route === 'profile') view = await profileView();
-    else view = await projectsView();
-  } catch (ex) {
-    view = state.me ? shell('', h('div', { class: 'empty error' }, ex.message)) : loginView();
+  if (!state.me) {
+    navigation.clear();
+    return app.replaceChildren(loginView());
   }
-  // A slower earlier navigation must not overwrite a newer one.
-  if (seq !== renderSeq) return;
-  app.replaceChildren(...[view].flat());
+  const [, route] = location.hash.split('/');
+  await navigation.navigate(location.hash || '#/projects', { reload }).catch(() => {});
+  if (seq !== renderSeq || !state.me) return;
 
   // Entry points from the app icon's shortcuts and the OS share sheet.
   if (route === 'new' || route === 'share') {
@@ -2550,22 +2601,28 @@ async function render() {
 async function refreshInboxCount() {
   const { events } = await api('GET', '/inbox');
   pwa.setBadge(events.length);
-  if (events.length !== state.inboxCount) {
-    state.inboxCount = events.length;
-    const link = document.querySelector('.nav a[href="#/inbox"]');
-    link?.querySelector('.badge')?.remove();
-    if (events.length) link?.append(h('span', { class: 'badge' }, String(events.length)));
-  }
+  state.inboxCount = events.length;
+  paintInboxCount();
+}
+
+function paintInboxCount() {
+  const link = document.querySelector('.nav a[href="#/inbox"]');
+  const badge = link?.querySelector('.badge');
+  if (!state.inboxCount) badge?.remove();
+  else if (badge) badge.textContent = String(state.inboxCount);
+  else link?.append(h('span', { class: 'badge' }, String(state.inboxCount)));
 }
 
 async function boot() {
-  state.config ??= await fetch('/api/config').then((r) => r.json()).catch(() => null);
+  navigation.clear();
+  const configPromise = state.config ? Promise.resolve(state.config) : fetch('/api/config').then((r) => r.json()).catch(() => null);
   try {
-    const res = await fetch('/api/me',{headers:pwa.clientHeaders()});
+    const [config, res] = await Promise.all([configPromise, fetch('/api/me',{headers:pwa.clientHeaders()})]);
+    state.config = config;
     state.me = res.ok ? await res.json() : null;
     if (state.me) {
-      state.accounts = await api('GET', '/accounts');
-      await refreshInboxCount().catch(() => {});
+      const [accounts] = await Promise.all([api('GET', '/accounts'), refreshInboxCount().catch(() => {})]);
+      state.accounts = accounts;
     }
   } catch {
     state.me = null;
@@ -2591,7 +2648,9 @@ addEventListener('online', () => {
   state.poll?.().catch(() => {});
 });
 
-addEventListener('hashchange', render);
+addEventListener('hashchange', () => render({ reload: false }));
+// Browser Back/Forward must not fight the saved scroll position of each tab.
+if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 setInterval(() => {
   if (!state.me || document.hidden || document.querySelector('dialog[open]')) return;
   state.poll?.().catch(() => {});

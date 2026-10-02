@@ -58,12 +58,17 @@ body {
   color: var(--text);
   font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
+a, button, select, input, textarea {
+  touch-action: manipulation;
+}
 a {
   color: var(--accent-text);
   text-decoration: none;
 }
-a:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  a:hover {
+    text-decoration: underline;
+  }
 }
 h1,
 h2,
@@ -133,9 +138,11 @@ pre {
   color: var(--text-2);
   white-space: nowrap;
 }
-.nav a:hover {
-  background: var(--surface-2);
-  text-decoration: none;
+@media (hover: hover) {
+  .nav a:hover {
+    background: var(--surface-2);
+    text-decoration: none;
+  }
 }
 .nav a.active {
   color: var(--text);
@@ -240,8 +247,10 @@ button {
   cursor: pointer;
   white-space: nowrap;
 }
-button:hover {
-  background: var(--surface-2);
+@media (hover: hover) {
+  button:hover {
+    background: var(--surface-2);
+  }
 }
 button.primary {
   background: var(--accent);
@@ -249,16 +258,20 @@ button.primary {
   color: #fff;
   font-weight: 600;
 }
-button.primary:hover {
-  filter: brightness(1.08);
+@media (hover: hover) {
+  button.primary:hover {
+    filter: brightness(1.08);
+  }
 }
 button.ghost {
   border-color: transparent;
   background: none;
   color: var(--text-2);
 }
-button.ghost:hover {
-  background: var(--surface-2);
+@media (hover: hover) {
+  button.ghost:hover {
+    background: var(--surface-2);
+  }
 }
 button:disabled {
   opacity: 0.5;
@@ -393,9 +406,11 @@ label.field {
 .task-row:first-child {
   border-top: 0;
 }
-.task-row:hover {
-  background: var(--surface-2);
-  text-decoration: none;
+@media (hover: hover) {
+  .task-row:hover {
+    background: var(--surface-2);
+    text-decoration: none;
+  }
 }
 .task-title {
   font-weight: 500;
@@ -1307,10 +1322,12 @@ a.button:hover {
   border-top: 3px solid var(--project, var(--axis));
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
-.project-card:hover {
-  text-decoration: none;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+@media (hover: hover) {
+  .project-card:hover {
+    text-decoration: none;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .project-card {
@@ -1466,7 +1483,6 @@ button.small {
   border-radius: 6px;
   color: var(--text);
 }
-.profile-link:hover,
 .profile-link.active {
   background: var(--surface-2);
   text-decoration: none;
@@ -1570,3 +1586,26 @@ button.big {
 }
 
 .language-picker { width: auto; padding: 5px 7px; font-size: 12px; flex-shrink: 0; }
+
+/* Touch feedback ends with the press; hover belongs to pointing devices. */
+@media (hover: hover) {
+  .profile-link:hover {
+    background: var(--surface-2);
+    text-decoration: none;
+  }
+}
+@media (hover: none) {
+  .nav a:active,
+  .profile-link:active,
+  .task-row:active,
+  .project-card:active {
+    background: var(--surface-2);
+    text-decoration: none;
+  }
+  button:active:not(:disabled) {
+    filter: brightness(0.92);
+  }
+  .project-card {
+    transition: none;
+  }
+}

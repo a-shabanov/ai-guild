@@ -1,6 +1,6 @@
 // AI Guild service worker: offline shell, cached reads, push notifications, share target.
 // Bump VERSION when the caching rules change; shell files themselves refresh on every visit.
-const VERSION = 'v11';
+const VERSION = 'v12';
 const SHELL = `shell-${VERSION}`;
 const API = `api-${VERSION}`; // last successful GET responses, for reading offline
 const FILES = `files-${VERSION}`; // image attachments
@@ -10,6 +10,7 @@ const SHELL_FILES = [
   '/',
   '/style.css',
   '/app.js',
+  '/navigation.js',
   '/pwa.js',
   '/client-device.js',
   '/i18n.js',
