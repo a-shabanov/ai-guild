@@ -1729,3 +1729,5 @@ button.big {
 @media(max-width:600px){.settings-link {padding:16px}.settings-link .chip {font-size:10px}}
 
 .settings-detail button {white-space:normal;max-width:100%;text-align:left}
+
+.quick-unlock-icon, .quick-unlock-icon svg { width:72px; height:72px; color:var(--accent); }

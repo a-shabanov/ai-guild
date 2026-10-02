@@ -2,11 +2,11 @@
 
 Passkeys, Google, Telegram and API keys sign into an account. The app passcode protects a saved session on a particular client. It does not replace account sign-in or server-side email/Telegram two-factor confirmation.
 
-After sign-in, create and confirm a six-digit app passcode. The app asks for it again when reopened and after a minute in the background. Enable quick unlock separately in Settings → App protection. The keypad remains available when biometric confirmation is cancelled or fails. Changing the code or the quick-unlock setting requires the current app passcode. Forgotten codes are reset by signing out and signing back in through a linked account method; signing out removes unsent comments from that client.
+After sign-in, create and confirm a six-digit app passcode, or choose Skip. Skipping is remembered for that saved session; the PIN can be created later in Settings → App protection. After PIN creation a separate screen offers quick unlock with Connect and Not now. The biometric/passkey prompt opens only after Connect; cancelling or failing it leaves the PIN configured and quick unlock off. The app asks for it again when reopened and after a minute in the background. Enable quick unlock separately in Settings → App protection. The keypad remains available when biometric confirmation is cancelled or fails. Changing the code or the quick-unlock setting requires the current app passcode. Forgotten codes are reset by signing out and signing back in through a linked account method; signing out removes unsent comments from that client.
 
 ## Web / PWA
 
-The code protects the current saved browser session. A new primary sign-in establishes a new session and requires code setup again. Existing sessions older than ten minutes must sign in again before setting their first code.
+The code protects the current saved browser session. A new primary sign-in establishes a new session and requires code setup again. Initial PIN enrollment is available for any valid unlocked saved session, including after postponing setup.
 
 The server stores a salted scrypt hash (N=32768, r=8, p=1). Locked sessions receive HTTP 423 on authenticated API and MCP requests. Five incorrect attempts start a 30-second cooldown; further failures increase it up to five minutes. Attempts persist on the session and cannot be reset by reloading the page.
 
@@ -20,7 +20,7 @@ The app code encrypts the session token using AES-GCM and a key derived by PBKDF
 
 Optional Face ID / Touch ID holds a separate Keychain copy protected by `biometryCurrentSet`. Enrollment changes invalidate that copy, while the app code still works. Enabling or disabling biometrics requires the current app code. Biometric confirmation unlocks the app directly; it never inserts or exposes the digits of the code.
 
-Existing unprotected sessions move to code setup. Existing biometric-only sessions first require their previous biometric confirmation and then code setup. Background inbox polling cannot decrypt the token once an app code is configured; APNs remains the notification mechanism for protected sessions.
+Existing unprotected sessions move to optional code setup. Choosing Skip saves the session in the device-only, when-unlocked Keychain, without app-level PIN protection; restoring that saved session does not repeat setup. Creating the PIN later removes the unprotected copy. Existing biometric-only sessions first require their previous biometric confirmation and then code setup. Background inbox polling cannot decrypt the token once an app code is configured; APNs remains the notification mechanism for protected sessions.
 
 ## Local verification
 

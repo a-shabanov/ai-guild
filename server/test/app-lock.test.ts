@@ -50,14 +50,14 @@ test('five failures commit a persistent cooldown, including concurrent requests;
  const row=await db.q1('select app_passcode_attempts,app_passcode_retry_at from sessions where token_hash=$1',[auth.hashKey(p.token)]);
  assert.equal(row!.app_passcode_attempts,0);assert.equal(row!.app_passcode_retry_at,null);
 });
-test('settings changes require current PIN and unlocked session; fresh sign-in is needed for initial enrollment',async()=>{
+test('settings changes require current PIN and unlocked session; enrollment remains available later',async()=>{
  const p=await person();await setup(p.token);
  assert.equal((await request('/app-lock/settings',p.token,'PUT',{code:'654321'})).status,400);
  assert.equal((await request('/app-lock/settings',p.token,'PUT',{code:'654321',current_code:'123456'})).status,200);
  await lock(p.token);assert.equal((await setup(p.token)).status,423);
  assert.equal((await unlock(p.token)).status,400);assert.equal((await unlock(p.token,'654321')).status,200);
  const old=await person();await db.q("update sessions set created_at=now()-interval '11 minutes' where token_hash=$1",[auth.hashKey(old.token)]);
- assert.equal((await setup(old.token)).status,403);
+ assert.equal((await setup(old.token)).status,200);
 });
 test('PIN input validation, origin binding, API-key rejection, expired and revoked sessions',async()=>{
  const p=await person();
@@ -104,4 +104,39 @@ test('unlock proof cannot log in, unlock another session, or accept another acco
  assert.equal((await request('/me',p.token)).status,423);assert.equal((await unlock(p.token)).status,200);
  const noShortcut=await person();await setup(noShortcut.token);await lock(noShortcut.token);
  assert.equal((await request('/app-lock/passkey/options',noShortcut.token,'POST')).status,403);
+});
+
+test('PIN setup can be skipped persistently for one session and completed later',async()=>{
+ const p=await person();
+ assert.equal((await request('/app-lock/skip',p.token,'POST',undefined,'https://attacker.test')).status,403);
+ assert.equal((await request('/app-lock/skip',p.token,'POST')).status,200);
+ assert.equal((await (await lock(p.token)).json()).setup_skipped,true);
+ assert.equal((await request('/me',p.token)).status,200);
+ const second=await auth.createSession(p.actor.id,'key');
+ assert.equal((await (await request('/app-lock/status',second)).json()).setup_skipped,false);
+ await db.q("update sessions set created_at=now()-interval '5 days' where token_hash=$1",[auth.hashKey(p.token)]);
+ assert.equal((await setup(p.token)).status,200);
+ assert.equal((await request('/app-lock/skip',p.token,'POST')).status,409);
+ await lock(p.token);assert.equal((await request('/app-lock/skip',p.token,'POST')).status,409);
+ assert.equal((await request('/me',p.token)).status,423);
+});
+test('quick unlock requires separate confirmation; cancellation preserves PIN and proof is scoped',async()=>{
+ const p=await person(),key=await credential(p.actor.id);await setup(p.token);
+ const status=async()=> (await (await request('/app-lock/status',p.token)).json());
+ const offer=()=>request('/app-lock/biometric/options',p.token,'POST',{code:'123456'});
+ assert.equal((await request('/app-lock/biometric/options',p.token,'POST',{code:'000000'})).status,400);
+ let c=await (await offer()).json();assert.equal((await status()).biometric,false);
+ assert.equal((await unlock(p.token)).status,200);
+ c=await (await offer()).json();
+ assert.equal((await request('/passkeys/login/verify',p.token,'POST',{challenge_id:c.challenge_id,response:key.assertion(c.options)})).status,400);
+ c=await (await offer()).json();
+ const second=await auth.createSession(p.actor.id,'key');await setup(second);
+ assert.equal((await request('/app-lock/biometric/verify',second,'POST',{challenge_id:c.challenge_id,response:key.assertion(c.options)})).status,400);
+ c=await (await offer()).json();
+ const proof={challenge_id:c.challenge_id,response:key.assertion(c.options)};
+ assert.equal((await request('/app-lock/biometric/verify',p.token,'POST',proof)).status,200);
+ assert.equal((await status()).biometric,true);
+ assert.equal((await request('/app-lock/biometric/verify',p.token,'POST',proof)).status,400);
+ await lock(p.token);assert.equal((await offer()).status,423);
+ assert.equal((await unlock(p.token)).status,200);
 });

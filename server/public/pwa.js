@@ -99,6 +99,16 @@ export async function passkeyUnlock(request) {
   return request('POST','/passkey/verify',{challenge_id,response:credentialJSON(credential)});
 }
 
+// Enabling the shortcut requires an explicit, successful browser confirmation.
+export async function enableQuickUnlock(request, code) {
+  const {challenge_id,options}=await request('POST','/biometric/options',{code});
+  let credential;
+  try{credential=await navigator.credentials.get({publicKey:requestOptions({...options,hints:['client-device']})});}
+  catch(error){throw friendly(error);}
+  if(!credential)throw new Error(i18n.t('Проверка отменена'));
+  return request('POST','/biometric/verify',{challenge_id,response:credentialJSON(credential)});
+}
+
 export async function passkeyRegister(api, name) {
   const { challenge_id, options } = await api('POST', '/passkeys/register/options');
   let credential;

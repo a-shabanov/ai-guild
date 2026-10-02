@@ -319,6 +319,19 @@ export function restRouter(): Router {
   r.post('/app-lock/lock',async(req,res)=>{res.json(await appLock.lock(req.actor,keyFromRequest(req)));});
   r.post('/app-lock/unlock',jsonBody,async(req,res)=>{res.json(await appLock.unlock(req.actor,keyFromRequest(req),parse(S.AppLockUnlock,req.body).code));});
   r.put('/app-lock/settings',jsonBody,async(req,res)=>{res.json(await appLock.configure(req.actor,keyFromRequest(req),parse(S.AppLockConfigure,req.body)));});
+  r.post('/app-lock/skip',async(req,res)=>{res.json(await appLock.skipSetup(req.actor,keyFromRequest(req)));});
+  r.post('/app-lock/biometric/options',jsonBody,async(req,res)=>{
+    const status=await appLock.status(req.actor,keyFromRequest(req));
+    if(!status.configured || status.locked) throw new HttpError(423,'app is locked');
+    await appLock.unlock(req.actor,keyFromRequest(req),parse(S.AppLockUnlock,req.body).code);
+    res.json(await passkeys.unlockOptions(req.actor,appLock.sessionHash(keyFromRequest(req)),'enable-biometric'));
+  });
+  r.post('/app-lock/biometric/verify',jsonBody,async(req,res)=>{
+    const status=await appLock.status(req.actor,keyFromRequest(req));
+    if(!status.configured || status.locked) throw new HttpError(423,'app is locked');
+    await passkeys.verifyLogin(parse(S.PasskeyResponse,req.body),{actor:req.actor,sessionHash:appLock.sessionHash(keyFromRequest(req)),purpose:'enable-biometric'});
+    res.json(await appLock.enableBiometric(req.actor,keyFromRequest(req)));
+  });
   r.post('/app-lock/passkey/options',async(req,res)=>{
     const status=await appLock.status(req.actor,keyFromRequest(req));
     if(!status.configured || !status.biometric) throw new HttpError(403,'passkey unlock is disabled');

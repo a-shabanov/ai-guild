@@ -118,8 +118,8 @@ export async function loginOptions(): Promise<Row> {
   return { challenge_id: putChallenge(options.challenge, undefined, 'login'), options };
 }
 
-export async function verifyLogin(input: { challenge_id: string; response: any }, unlock?: { actor: Actor; sessionHash: string }): Promise<Actor> {
-  const expectedChallenge = takeChallenge(input.challenge_id, unlock?.actor.id, unlock ? `unlock:${unlock.sessionHash}` : 'login');
+export async function verifyLogin(input: { challenge_id: string; response: any }, unlock?: { actor: Actor; sessionHash: string; purpose?: 'unlock' | 'enable-biometric' }): Promise<Actor> {
+  const expectedChallenge = takeChallenge(input.challenge_id, unlock?.actor.id, unlock ? `${unlock.purpose ?? 'unlock'}:${unlock.sessionHash}` : 'login');
   const failed = new HttpError(401, 'passkey sign-in failed');
   const row = await q1(
     `select p.*, a.name as account_name, a.kind, a.system, a.role, a.disabled
@@ -162,10 +162,10 @@ export async function verifyLogin(input: { challenge_id: string; response: any }
   };
 }
 
-export async function unlockOptions(actor: Actor, sessionHash: string): Promise<Row> {
+export async function unlockOptions(actor: Actor, sessionHash: string, purpose: 'unlock' | 'enable-biometric' = 'unlock'): Promise<Row> {
   const credentials = await q('select credential_id,transports from passkeys where account_id=$1', [actor.id]);
   if (!credentials.length) throw new HttpError(400, 'add a passkey first');
   const options = await generateAuthenticationOptions({ rpID: config.webauthn.rpId, userVerification: 'required',
     allowCredentials: credentials.map(p => ({id:p.credential_id,transports:p.transports})) });
-  return {challenge_id:putChallenge(options.challenge,actor.id,`unlock:${sessionHash}`),options};
+  return {challenge_id:putChallenge(options.challenge,actor.id,`${purpose}:${sessionHash}`),options};
 }

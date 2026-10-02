@@ -43,6 +43,7 @@ struct AITrackerApp: App {
                 case .restoring: ProgressView()
                 case .signedOut: LoginView()
                 case .settingPasscode: PasscodeSetupView()
+                case .offeringQuickUnlock: QuickUnlockOfferView()
                 case .locked: LockView()
                 case .ready: RootView()
                 }

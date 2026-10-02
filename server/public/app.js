@@ -6,7 +6,7 @@ import * as pwa from './pwa.js';
 import { createNavigation } from './navigation.js';
 import { installPullToRefresh } from './pull-to-refresh.js';
 import appVersion from './version.js';
-import { passcodeView, disposePasscodeView } from './app-lock-view.js';
+import { passcodeView, quickUnlockView, disposePasscodeView } from './app-lock-view.js';
 
 const STATUS = {
   todo: i18n.t('К выполнению'),
@@ -567,7 +567,7 @@ async function logout() {
   await fetch('/api/session', { method: 'DELETE' }).catch(() => {});
   pwa.forgetPrivateData();
   state.me = null;
-  state.appLock = null; state.lockMode = null;
+  state.appLock = null; state.lockMode = null; state.quickUnlock = null;
   localStorage.removeItem('ait-app-lock-configured');
   render();
 }
@@ -2261,9 +2261,9 @@ async function profileView(section) {
       section==='security' && h('section',{class:'card pad stack'},
         h('h2',null,i18n.t('Быстрая разблокировка')),
         h('p',{class:'muted',style:'margin:0'},i18n.t('Подтверждение на устройстве заменяет ручной ввод PIN.')),
-        h('div',null,h('button',{onclick:()=>{state.lockMode='biometric';render();},disabled:!state.appLock?.configured || !!blocker || !passkeys?.length},
+        h('div',null,h('button',{onclick:()=>{state.lockMode='biometric';render();},disabled:!state.appLock?.configured || !!blocker},
           state.appLock?.biometric?i18n.t`Отключить быструю разблокировку через ${bio}`:i18n.t`Включить быструю разблокировку через ${bio}`)),
-        h('p',{class:'muted small',style:'margin:0'},i18n.t('Браузер подтверждает разблокировку через passkey: биометрией или кодом устройства. Для включения добавьте passkey в разделе входа в аккаунт.')),
+        h('p',{class:'muted small',style:'margin:0'},i18n.t('Браузер подтверждает разблокировку через passkey: биометрией или кодом устройства. Если passkey ещё нет, его можно создать при подключении.')),
         h('a',{href:'#/settings/sign-in'},i18n.t('Способы входа'))),
       section==='sign-in' && passkeys && h(
         'section',
@@ -2786,21 +2786,39 @@ async function render({ reload = true } = {}) {
   clearInterval(state.twoFactorTicker);
   tip.hidden = true;
   disposePasscodeView();
+  if(state.quickUnlock && !state.appLock?.locked) {
+    navigation.clear();
+    const offer=state.quickUnlock;
+    const finish=async()=>{state.quickUnlock=null;state.lockMode=null;await boot(false);};
+    app.replaceChildren(quickUnlockView({biometricName:pwa.biometryName(),touch:pwa.deviceName()==='Mac',supported:!pwa.passkeyBlocker(state.config),
+      enable:async()=>{
+        if(!state.appLock.passkey_available){await pwa.passkeyRegister(api,pwa.deviceName());state.appLock.passkey_available=true;}
+        await pwa.enableQuickUnlock(lockRequest,offer.code);await finish();
+      },later:finish}));
+    return;
+  }
   if (state.appLock && (state.appLock.locked || state.appLock.setup || state.lockMode)) {
     navigation.clear();
     const mode = state.lockMode || (state.appLock.setup ? 'setup' : 'unlock');
     const unlock = async () => { state.lockMode=null; await boot(false); };
     app.replaceChildren(passcodeView({mode,
       biometric:state.appLock.biometric && !pwa.passkeyBlocker(state.config),
-      available:state.appLock.passkey_available && !pwa.passkeyBlocker(state.config),
       biometricName:pwa.biometryName(),touch:pwa.deviceName()==='Mac',
-      initialBiometric:mode==='biometric'?!state.appLock.biometric:!!state.appLock.biometric,
+
       autoBiometric:!!state.autoBiometric,
+      skip:mode==='setup'&&!state.lockMode?async()=>{await lockRequest('POST','/skip');await unlock();}:null,
       submit:async input=>{
         if(input.action==='verify'){await lockRequest('POST','/unlock',{code:input.code});return;}
         if(mode==='unlock')await lockRequest('POST','/unlock',{code:input.code});
-        else if(mode==='biometric')await lockRequest('PUT','/settings',{code:input.code,current_code:input.code,biometric:input.biometric});
-        else await lockRequest('PUT','/settings',{code:input.code,current_code:input.current_code,biometric:input.biometric});
+        else if(mode==='biometric' && !state.appLock.biometric){
+          await lockRequest('POST','/unlock',{code:input.code});
+          state.quickUnlock={code:input.code};state.lockMode=null;await render();return;
+        }
+        else await lockRequest('PUT','/settings',{code:input.code,current_code:mode==='biometric'?input.code:input.current_code,biometric:mode==='change'&&!!state.appLock.biometric});
+        if(mode==='setup'){
+          state.appLock=await lockRequest('GET','/status');
+          state.quickUnlock={code:input.code};state.lockMode=null;await render();return;
+        }
         await unlock();
       },
       unlockBiometric:async()=>{await pwa.passkeyUnlock(lockRequest);await unlock();},
@@ -2874,7 +2892,7 @@ async function lockRequest(method, path, body) {
 
 async function lockApplication() {
   if(!state.appLock?.configured)return;
-  state.appLock.locked=true;state.me=null;state.accounts=[];state.lockMode=null;
+  state.appLock.locked=true;state.me=null;state.accounts=[];state.lockMode=null;state.quickUnlock=null;
   state.autoBiometric=true;
   navigation.clear();
   for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
@@ -2900,7 +2918,7 @@ async function boot(relock = true) {
       const res=await fetch('/api/me',{headers:pwa.clientHeaders()});
       state.me=res.ok?await res.json():null;
       if(res.status===423){state.appLock={...(state.appLock||{}),configured:true,locked:true};state.autoBiometric=true;}
-      if(state.me?.kind==='human' && state.appLock && !state.appLock.configured)state.appLock.setup=true;
+      if(state.me?.kind==='human' && state.appLock && !state.appLock.configured && !state.appLock.setup_skipped)state.appLock.setup=true;
       if(state.me && !state.appLock?.setup){
         const [accounts]=await Promise.all([api('GET','/accounts'),refreshInboxCount().catch(()=>{})]);state.accounts=accounts;
         pwa.pushEnabled(api).catch(()=>{});

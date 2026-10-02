@@ -82,19 +82,24 @@ struct PasscodeSetupView: View {
     @State private var first = ""
     @State private var error: String?
     @State private var busy = false
-    @State private var biometric = false
     var body: some View {
         CodeEntryView(title: first.isEmpty ? "Создайте код-пароль" : "Повторите код-пароль",
             subtitle: "Шесть цифр для доступа к приложению на этом устройстве",
             digits: $digits, error: error, busy: busy, completed: complete) {
-                if Biometrics.isAvailable {
-                    Toggle(isOn: $biometric) { Label("Разблокировать через \(Biometrics.name)", systemImage: Biometrics.icon) }
-                        .font(.subheadline).disabled(busy).frame(maxWidth: 310)
-                }
-                Button(first.isEmpty ? "Выйти из аккаунта" : "Начать заново") {
-                    if first.isEmpty { state.signOut() }
-                    else { first = ""; digits = ""; error = nil }
+                Text("PIN можно установить позже в настройках защиты приложения.")
+                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Button("Пропустить") {
+                    guard !busy else { return }
+                    busy = true
+                    Task {
+                        defer { busy = false }
+                        do { try await state.skipPasscodeSetup() }
+                        catch { self.error = error.localizedDescription }
+                    }
                 }.font(.footnote).disabled(busy)
+                Button("Начать заново") {
+                    first = ""; digits = ""; error = nil
+                }.font(.footnote).disabled(busy).opacity(first.isEmpty ? 0 : 1)
         }
     }
     private func complete() {
@@ -105,7 +110,7 @@ struct PasscodeSetupView: View {
         busy = true
         Task {
             defer { busy = false; digits = "" }
-            do { try await state.createPasscode(first, biometric: biometric) }
+            do { try state.createPasscode(first) }
             catch { self.error = error.localizedDescription }
         }
     }
@@ -145,6 +150,44 @@ struct PasscodeSettingsView: View {
         else {
             do { try state.changePasscode(current: current, new: first); dismiss() }
             catch { self.error = error.localizedDescription; digits = "" }
+        }
+    }
+}
+
+struct QuickUnlockOfferView: View {
+    @Environment(AppState.self) private var state
+    @State private var busy = false
+    @State private var error: String?
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            Image(systemName: Biometrics.icon).font(.system(size: 64, weight: .light))
+                .foregroundStyle(.tint).accessibilityHidden(true)
+            Text("Подключить быструю разблокировку?").font(.title2.bold()).multilineTextAlignment(.center)
+            Text("PIN-код сохранён. \(Biometrics.name) позволит открывать приложение без его ввода.")
+                .foregroundStyle(.secondary).multilineTextAlignment(.center)
+            if !Biometrics.isAvailable {
+                Text("Быстрая разблокировка недоступна на этом устройстве. Её можно подключить позже в настройках.")
+                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+            if let error { Text(error).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center) }
+            Spacer()
+            Button("Подключить") { finish(enable: true) }
+                .buttonStyle(.borderedProminent).controlSize(.large)
+                .disabled(busy || !Biometrics.isAvailable)
+            Button("Не сейчас") { finish(enable: false) }.disabled(busy)
+            if busy { ProgressView() }
+        }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.appSurface)
+    }
+    private func finish(enable: Bool) {
+        guard !busy else { return }
+        busy = true; error = nil
+        Task {
+            defer { busy = false }
+            do { try await state.finishQuickUnlock(enable: enable) }
+            catch let failure as BiometricError where failure.cancelled { error = nil }
+            catch { self.error = error.localizedDescription }
         }
     }
 }

@@ -13,7 +13,7 @@ export default {
   "Включить быструю разблокировку через {0}": "Enable quick unlock with {0}",
   "Быстрая разблокировка через {0}": "Quick unlock with {0}",
   "Заблокировать сейчас": "Lock now",
-  "Браузер подтверждает разблокировку через passkey: биометрией или кодом устройства. Для включения добавьте passkey в разделе входа в аккаунт.": "The browser confirms a passkey unlock using biometrics or the device code. To enable it, add a passkey under account sign-in.",
+  "Браузер подтверждает разблокировку через passkey: биометрией или кодом устройства. Если passkey ещё нет, его можно создать при подключении.": "The browser confirms a passkey unlock using biometrics or the device code. To enable it, add a passkey under account sign-in.",
   "Разблокировать приложение": "Unlock the app",
   "Шесть цифр для доступа на этом устройстве": "Six digits to protect access on this device",
   "Цифровая клавиатура": "Numeric keypad",
@@ -505,5 +505,14 @@ export default {
   "Проверяем обновления…": "Checking for updates…",
   "Для проверки обновлений нужна сеть": "An internet connection is required to check for updates",
   "Не удалось проверить обновления": "Could not check for updates",
-  "Доступно обновление приложения. Откройте «Настройки → О приложении».": "An app update is available. Open Settings → About the app."
+  "Доступно обновление приложения. Откройте «Настройки → О приложении».": "An app update is available. Open Settings → About the app.",
+  "Пропустить": "Skip",
+  "Подключить": "Connect",
+  "Не сейчас": "Not now",
+  "Подключить быструю разблокировку?": "Enable quick unlock?",
+  "PIN-код сохранён. Подтверждение на устройстве позволит открывать приложение без его ввода.": "Your PIN is saved. Device verification lets you open the app without entering it.",
+  "Браузер попросит подтвердить passkey через {0} или код устройства. Если passkey ещё нет, предложит создать его.": "Your browser will ask you to confirm a passkey using {0} or your device code. If you do not have a passkey yet, it will offer to create one.",
+  "Быстрая разблокировка недоступна в этом браузере. Её можно подключить позже в настройках.": "Quick unlock is unavailable in this browser. You can enable it later in settings."
+ ,
+  "PIN можно установить позже в настройках защиты приложения.": "You can set a PIN later in app protection settings."
 };

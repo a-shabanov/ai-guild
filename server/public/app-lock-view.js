@@ -33,8 +33,8 @@ export function biometricIcon(touch = false) {
   return svg;
 }
 
-export function passcodeView({ mode = 'unlock', biometric = false, available = false, biometricName = 'passkey', touch = false,
-  submit, unlockBiometric, cancel, autoBiometric = false, initialError = '', initialBiometric = false }) {
+export function passcodeView({ mode = 'unlock', biometric = false, biometricName = 'passkey', touch = false,
+  submit, unlockBiometric, cancel, skip, autoBiometric = false, initialError = '' }) {
   disposePasscodeView();
   const controller = new AbortController();
   let digits = '', first = '', current = '', busy = false;
@@ -43,8 +43,6 @@ export function passcodeView({ mode = 'unlock', biometric = false, available = f
   const subtitle = el('p', { class: 'muted passcode-subtitle' }, i18n.t(mode === 'unlock' ? 'Разблокировать приложение' : 'Шесть цифр для доступа на этом устройстве'));
   const dots = el('div', { class: 'passcode-dots', role: 'status', 'aria-live': 'polite' });
   const error = el('p', { class: 'error passcode-error', role: 'alert' }, initialError);
-  const enabled = el('input', { type: 'checkbox' }); enabled.checked = initialBiometric;
-  const choice = el('label', { class: 'passcode-choice' }, enabled, i18n.t`Быстрая разблокировка через ${biometricName}`);
   const keys = el('div', { class: 'passcode-keypad', 'aria-label': i18n.t('Цифровая клавиатура') });
   const back = el('button', { type: 'button', class: 'passcode-action', 'aria-label': i18n.t('Удалить цифру'), onclick: () => { if (!busy) { digits = digits.slice(0,-1); paint(); } } }, '⌫');
   const bio = el('button', { type: 'button', class: 'passcode-action', 'aria-label': i18n.t`Разблокировать через ${biometricName}`, onclick: () => runBiometric() }, biometricIcon(touch));
@@ -61,17 +59,19 @@ export function passcodeView({ mode = 'unlock', biometric = false, available = f
   }
   const zero = el('button', { type:'button',class:'passcode-digit',onclick:()=>addDigit('0') }, '0'); buttons.push(zero);
   keys.append(bio,zero,back);
-  const cancelButton = el('button', { type:'button',class:'ghost passcode-cancel',onclick:()=>{ if(!busy) cancel(); } }, i18n.t(mode === 'unlock' ? 'Забыли код-пароль?' : mode === 'setup' ? 'Выйти из аккаунта' : 'Отмена'));
+  const cancelButton = el('button', { type:'button',class:'ghost passcode-cancel',onclick:()=>{ if(!busy) cancel(); } }, i18n.t(mode === 'unlock' ? 'Забыли код-пароль?' : 'Отмена'));
+  if(skip)cancelButton.hidden=true;
   const root = el('main', { class: 'passcode-screen' }, el('section', { class:'passcode-panel' },
     el('img', {src:'/icons/favicon-32.png?v=c76fb7f1fa02',alt:'',class:'passcode-brand-icon'}),
     el('div', {class:'passcode-brand'}, 'AI Guild'), title, subtitle, dots, error,
-    ...(available && (mode === 'setup' || mode === 'change' || mode === 'biometric') ? [choice] : []), keys, cancelButton));
+    ...(skip ? [el('p',{class:'muted small'},i18n.t('PIN можно установить позже в настройках защиты приложения.'))] : []), keys, ...(skip ? [el('button', {type:'button',class:'ghost passcode-skip',onclick:async()=>{if(busy)return;busy=true;paint();try{await skip();}catch(failure){error.textContent=failure.message;}finally{busy=false;if(!controller.signal.aborted)paint();}}},i18n.t('Пропустить'))] : []), cancelButton));
   function paint() {
     title.textContent = i18n.t(({unlock:'Введите код-пароль',new:'Создайте код-пароль',confirm:'Повторите код-пароль',current:'Введите текущий код-пароль'})[step]);
     dots.replaceChildren(...Array.from({length:6},(_,index)=>el('span',{class:index<digits.length?'filled':''})));
     dots.setAttribute('aria-label',i18n.t`Введено ${digits.length} из шести цифр`);
     for(const button of buttons)button.disabled=busy;
-    back.disabled=busy||!digits.length; cancelButton.disabled=busy; enabled.disabled=busy;
+    back.disabled=busy||!digits.length; cancelButton.disabled=busy;
+    const skipButton=root.querySelector('.passcode-skip');if(skipButton)skipButton.disabled=busy;
     if(biometric && mode==='unlock')bio.disabled=busy;
     root.setAttribute('aria-busy',String(busy));
   }
@@ -83,7 +83,7 @@ export function passcodeView({ mode = 'unlock', biometric = false, available = f
       if(step==='current' && mode==='change') {
         await submit({action:'verify',code:digits}); current=digits; digits='';step='new';
       } else {
-        await submit({code:step==='confirm'?first:digits,current_code:current||undefined,biometric:enabled.checked});
+        await submit({code:step==='confirm'?first:digits,current_code:current||undefined,biometric});
       }
     } catch(failure) {
       if(!controller.signal.aborted)error.textContent=failure.message;
@@ -96,11 +96,34 @@ export function passcodeView({ mode = 'unlock', biometric = false, available = f
     finally{busy=false;digits='';if(!controller.signal.aborted)paint();}
   }
   document.addEventListener('keydown',event=>{
-    if(event.altKey||event.ctrlKey||event.metaKey||event.target===enabled)return;
+    if(event.altKey||event.ctrlKey||event.metaKey)return;
     if(/^[0-9]$/.test(event.key)){event.preventDefault();addDigit(event.key);}
     else if(event.key==='Backspace'){event.preventDefault();if(!busy){digits=digits.slice(0,-1);paint();}}
   },{signal:controller.signal});
   const auto = autoBiometric && biometric ? setTimeout(()=>{if(root.isConnected)runBiometric();},300) : null;
   cleanup=()=>{controller.abort();clearTimeout(auto);};
   paint();return root;
+}
+
+export function quickUnlockView({biometricName, touch=false, supported=true, enable, later}) {
+  disposePasscodeView();
+  const controller=new AbortController();
+  const error=el('p',{class:'error passcode-error',role:'alert'});
+  const connect=el('button',{type:'button',class:'primary big'},i18n.t('Подключить'));
+  const skip=el('button',{type:'button',class:'ghost'},i18n.t('Не сейчас'));
+  connect.disabled=!supported;
+  const root=el('main',{class:'passcode-screen'},el('section',{class:'passcode-panel'},
+    el('div',{class:'quick-unlock-icon'},biometricIcon(touch)),
+    el('h1',{},i18n.t('Подключить быструю разблокировку?')),
+    el('p',{class:'muted passcode-subtitle'},i18n.t('PIN-код сохранён. Подтверждение на устройстве позволит открывать приложение без его ввода.')),
+    el('p',{class:'muted small'},supported?i18n.t`Браузер попросит подтвердить passkey через ${biometricName} или код устройства. Если passkey ещё нет, предложит создать его.`:i18n.t('Быстрая разблокировка недоступна в этом браузере. Её можно подключить позже в настройках.')),
+    error,connect,skip));
+  connect.addEventListener('click',async()=>{
+    connect.disabled=true;skip.disabled=true;error.textContent='';root.setAttribute('aria-busy','true');
+    try{await enable();}catch(failure){if(!controller.signal.aborted)error.textContent=failure.message;}
+    finally{if(!controller.signal.aborted){connect.disabled=!supported;skip.disabled=false;root.setAttribute('aria-busy','false');}}
+  });
+  skip.addEventListener('click',()=>later());
+  cleanup=()=>controller.abort();
+  return root;
 }

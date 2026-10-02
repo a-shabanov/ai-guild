@@ -23,7 +23,7 @@ export function sessionHash(token: string | undefined): string {
 }
 const metadata = (row: Row) => ({
   configured: !!row.app_passcode_hash, locked: !!row.app_locked_at,
-  biometric: row.app_biometric_unlock, retry_at: row.app_passcode_retry_at,
+  setup_skipped: row.app_passcode_setup_skipped, biometric: row.app_biometric_unlock, retry_at: row.app_passcode_retry_at,
 });
 export async function status(actor: Actor, token: string | undefined) {
   const row = await q1('select * from sessions where token_hash=$1 and account_id=$2 and expires_at>now()', [sessionHash(token), actor.id]);
@@ -74,8 +74,6 @@ export async function configure(actor: Actor, token: string | undefined, input: 
     if (row.app_locked_at) return new HttpError(423, 'app is locked');
     if (row.app_passcode_hash) {
       const failure = await check(row, input.current_code ?? ''); if (failure) return failure;
-    } else if (Date.now() - new Date(row.created_at).getTime() > 10 * 60_000) {
-      return new HttpError(403, 'sign in again to set an app passcode');
     }
     if (input.biometric && !(await row.db.query('select id from passkeys where account_id=$1 limit 1', [actor.id])).rows.length) return new HttpError(400, 'add a passkey first');
     await row.db.query(`update sessions set app_passcode_hash=$2, app_biometric_unlock=$3,
@@ -86,4 +84,20 @@ export async function configure(actor: Actor, token: string | undefined, input: 
 export async function unlockWithPasskey(actor: Actor, token: string | undefined) {
   await q(`update sessions set app_locked_at=null,app_passcode_attempts=0,app_passcode_retry_at=null
     where token_hash=$1 and account_id=$2 and app_biometric_unlock and app_passcode_hash is not null`, [sessionHash(token), actor.id]);
+}
+
+// Dismiss only the optional enrollment offer; a configured PIN cannot be bypassed.
+export async function skipSetup(actor: Actor, token: string | undefined) {
+  return withSession(actor, token, async row => {
+    if (row.app_passcode_hash || row.app_locked_at) return new HttpError(409, 'app passcode is already configured');
+    await row.db.query('update sessions set app_passcode_setup_skipped=true where id=$1', [row.id]);
+    return {ok:true};
+  });
+}
+export async function enableBiometric(actor: Actor, token: string | undefined) {
+  return withSession(actor, token, async row => {
+    if (!row.app_passcode_hash || row.app_locked_at) return new HttpError(423, 'app is locked');
+    await row.db.query('update sessions set app_biometric_unlock=true where id=$1', [row.id]);
+    return {ok:true};
+  });
 }

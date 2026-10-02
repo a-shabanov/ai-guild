@@ -20,7 +20,7 @@ final class AppState {
     static let shared = AppState()
 
     enum Phase {
-        case restoring, signedOut, settingPasscode, locked, ready
+        case restoring, signedOut, settingPasscode, offeringQuickUnlock, locked, ready
     }
 
     private(set) var phase = Phase.restoring
@@ -96,7 +96,24 @@ final class AppState {
             signOut()
             if let server = env["AITRACKER_PREVIEW_SERVER"] { UserDefaults.standard.set(server, forKey: "serverURL") }
             pendingCredential = env["AITRACKER_PREVIEW_TOKEN"] ?? "ats_disposable-preview-session"
-            if screen == "setup" { phase = .settingPasscode }
+            if screen == "setup" || screen == "offer" {
+                phase = .settingPasscode
+                if screen == "offer" { try? createPasscode("123456") }
+                if env["AITRACKER_PREVIEW_CHECK"] == "optional" {
+                    do {
+                        let credential = pendingCredential!
+                        try await skipPasscodeSetup()
+                        print("Optional PIN: skipped ready=\(phase == .ready), pin=\(AppPasscode.isConfigured)")
+                        try await connect(credential: credential)
+                        print("Optional PIN: reconnect ready=\(phase == .ready)")
+                        beginPasscodeSetup()
+                        try createPasscode("123456")
+                        print("Optional PIN: created offer=\(phase == .offeringQuickUnlock), biometric=\(biometricLock)")
+                        try await finishQuickUnlock(enable: false)
+                        print("Optional PIN: declined ready=\(phase == .ready), pin=\(AppPasscode.isConfigured), biometric=\(biometricLock)")
+                    } catch { print("Optional PIN test failed: \(error.localizedDescription)") }
+                }
+            }
             else {
                 do {
                     try AppPasscode.save(credential: pendingCredential!, code: "123456")
@@ -167,28 +184,36 @@ final class AppState {
         try await connect(credential: try AppPasscode.unlock(code: code))
     }
 
-    func createPasscode(_ code: String, biometric: Bool) async throws {
+    func skipPasscodeSetup() async throws {
         guard phase == .settingPasscode, let credential = pendingCredential else { return }
-        let generation = sessionGeneration
+        try Keychain.save(credential, biometric: false)
+        setBiometricFlag(false)
+        UserDefaults.standard.set(true, forKey: "passcodeSetupSkipped")
+        pendingCredential = nil
+        phase = .ready
+        Notifier.resume()
+        await refreshShared()
+    }
+
+    func createPasscode(_ code: String) throws {
+        guard phase == .settingPasscode, let credential = pendingCredential else { return }
         try AppPasscode.save(credential: credential, code: code)
         Keychain.delete()
         setBiometricFlag(false)
-        if biometric {
-            do {
-                _ = try await Biometrics.authenticate(reason: "Включить разблокировку через \(Biometrics.name)")
-                guard generation == sessionGeneration else { return }
-                try Keychain.save(credential, biometric: true)
-                setBiometricFlag(true)
-            } catch {
-                // The code is already safely stored and remains the fallback.
-                guard generation == sessionGeneration else { return }
-                pendingCredential = nil
-                securityNotice = "Код-пароль сохранён, но \(Biometrics.name) не включён. \(error.localizedDescription). Его можно включить в настройках защиты приложения."
-                phase = .ready; Notifier.resume(); await refreshShared()
-                return
-            }
+        UserDefaults.standard.removeObject(forKey: "passcodeSetupSkipped")
+        // Retain the already verified session only until the separate offer is finished.
+        phase = .offeringQuickUnlock
+    }
+
+    func finishQuickUnlock(enable: Bool) async throws {
+        guard phase == .offeringQuickUnlock, let credential = pendingCredential else { return }
+        let generation = sessionGeneration
+        if enable {
+            _ = try await Biometrics.authenticate(reason: "Включить разблокировку через \(Biometrics.name)")
+            guard generation == sessionGeneration, phase == .offeringQuickUnlock else { return }
+            try Keychain.save(credential, biometric: true)
+            setBiometricFlag(true)
         }
-        guard generation == sessionGeneration else { return }
         pendingCredential = nil
         phase = .ready
         Notifier.resume()
@@ -212,7 +237,7 @@ final class AppState {
             guard generation == sessionGeneration else { return }
             me = account
             client = candidate
-            if AppPasscode.isConfigured {
+            if AppPasscode.isConfigured || UserDefaults.standard.bool(forKey: "passcodeSetupSkipped") {
                 phase = .ready; Notifier.resume(); await refreshShared()
             } else {
                 pendingCredential = credential; phase = .settingPasscode
@@ -243,6 +268,7 @@ final class AppState {
         UserDefaults.standard.set(server.absoluteString, forKey: "serverURL")
         sessionGeneration += 1
         AppPasscode.delete()
+        UserDefaults.standard.removeObject(forKey: "passcodeSetupSkipped")
         Keychain.delete()
         pendingCredential = token
         setBiometricFlag(false)
@@ -329,6 +355,7 @@ final class AppState {
         }
         Keychain.delete()
         AppPasscode.delete()
+        UserDefaults.standard.removeObject(forKey: "passcodeSetupSkipped")
         setBiometricFlag(false)
         ResponseCache.clear()
         Outbox.shared.clear()
@@ -366,10 +393,11 @@ final class AppState {
 
     func didBecomeActive() async {
         defer { backgroundedAt = nil }
-        if AppPasscode.isConfigured, phase == .ready, let since = backgroundedAt,
+        if AppPasscode.isConfigured, (phase == .ready || phase == .offeringQuickUnlock), let since = backgroundedAt,
            Date.now.timeIntervalSince(since) > Self.lockAfter {
             sessionGeneration += 1
             client = nil
+            pendingCredential = nil
             phase = .locked
             return
         }

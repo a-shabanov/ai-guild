@@ -1,7 +1,7 @@
 // Local, disposable QA server. No production keys/accounts or database are used.
 import pg from 'pg';
 import express from 'express';
-import { writeFileSync, existsSync } from 'node:fs';
+import { writeFileSync, existsSync, readFileSync } from 'node:fs';
 import {generateKeyPairSync,randomBytes} from 'node:crypto';
 process.env.DATABASE_URL='postgres://aitracker:aitracker@127.0.0.1:5433/aitracker_app_lock_preview';
 process.env.PORT='4618';process.env.PUBLIC_URL='http://127.0.0.1:4618';process.env.DATA_DIR='/private/tmp/ait-app-lock-preview-data';
@@ -20,6 +20,13 @@ await q(`insert into passkeys(account_id,credential_id,public_key,counter,transp
 const native=await auth.createSession(actor.id,'key');
 writeFileSync('/private/tmp/ait-app-lock-preview-session.json',JSON.stringify({token:native,url:'http://127.0.0.1:4618'}),{mode:0o600});
 const app=express();
+const previewWorker=readFileSync(new URL('../public/sw.js',import.meta.url),'utf8').replace(/const VERSION = [^;]+;/,`const VERSION = 'preview-${Date.now()}';`);
+app.get('/sw.js',(_req,res)=>res.type('application/javascript').set('Cache-Control','no-store').send(previewWorker));
+app.get('/api/auth/__preview-offer',(_req,res)=>res.type('html').send(`<!doctype html><html lang="ru"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/style.css"><body><script type="module">
+import {quickUnlockView} from '/app-lock-view.js';
+
+document.body.append(quickUnlockView({biometricName:'Touch ID',touch:true,enable:async()=>{throw new Error('Проверка отменена')},later:()=>location.href='/#/settings'}));
+</script></body></html>`));
 let previewUpdate=process.env.AITRACKER_PREVIEW_UPDATE==='1';
 app.get('/api/config',(_req,res,next)=>existsSync('/private/tmp/ait-preview-update-error')?res.status(503).json({error:'Preview update check unavailable'}):previewUpdate?res.json({version:'99.0.0',build:999,apns:false,vapid_public_key:null,providers:{google:false,telegram:false},passkeys:{rp_id:'127.0.0.1',origins:['http://127.0.0.1:4618']},two_factor:{email:false,telegram:false}}):next());
 app.get('/api/auth/__preview/:mode',async(req,res)=>{
