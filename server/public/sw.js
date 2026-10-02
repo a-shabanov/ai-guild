@@ -1,6 +1,6 @@
 // AI Guild service worker: offline shell, cached reads, push notifications, share target.
 // VERSION is written by scripts/version.mjs. Each release caches its complete shell.
-const VERSION = 'v0.3.4-b12';
+const VERSION = 'v0.3.5-b13';
 const SHELL = `shell-${VERSION}`;
 const API = `api-${VERSION}`; // last successful GET responses, for reading offline
 const FILES = `files-${VERSION}`; // image attachments
@@ -15,6 +15,7 @@ const SHELL_FILES = [
   '/app.js',
   '/version.js',
   '/navigation.js',
+  '/pull-to-refresh.js',
   '/pwa.js',
   '/client-device.js',
   '/i18n.js',
