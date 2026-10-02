@@ -4,6 +4,7 @@ import * as i18n from './i18n.js';
 
 import * as pwa from './pwa.js';
 import { createNavigation } from './navigation.js';
+import appVersion from './version.js';
 
 const STATUS = {
   todo: i18n.t('К выполнению'),
@@ -434,26 +435,49 @@ function withTip(el, title, body) {
 
 // ---------- shell ----------
 
-// "0.2.0 (7)": the version and the build number of the server that answers.
-const release = () => (state.config?.version ? `${state.config.version} (${state.config.build})` : '');
+const release = () => `${appVersion.version} (${appVersion.build})`;
+
+function tabIcon(key) {
+  const paths = {
+    projects: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
+    tasks: 'M4 6l1 1 2-3 M10 5h10 M4 13l1 1 2-3 M10 12h10 M4 20l1 1 2-3 M10 19h10',
+    inbox: 'M4 4h16l2 12v4H2v-4z M2 16h6l2 3h4l2-3h6',
+    analytics: 'M4 20V11h3v9z M11 20V6h3v14z M18 20V2h3v18z',
+    settings: 'M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z M15 12a3 3 0 1 1-6 0 3 3 0 1 1 6 0',
+  };
+  if (!paths[key]) return null;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  for (const [name, value] of Object.entries({class:'tab-icon',viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.8','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'})) svg.setAttribute(name,value);
+  const path = document.createElementNS(svg.namespaceURI, 'path');
+  path.setAttribute('d', paths[key]);
+  svg.append(path);
+  return svg;
+}
+
+function taskModes(active) {
+  return h('nav', {class:'task-modes mobile-only', 'aria-label':i18n.t('Вид задач')},
+    h('a',{href:'#/tasks',class:active==='tasks'?'active':'','aria-current':active==='tasks'?'page':null},i18n.t('Список')),
+    h('a',{href:'#/board',class:active==='board'?'active':'','aria-current':active==='board'?'page':null},i18n.t('Доска')));
+}
 
 function shell(active, ...content) {
   const link = (href, label, key, extra, cls = '') =>
-    h('a', { href, class: `${cls} ${active === key ? 'active' : ''}` }, label, extra);
+    h('a', { href, class: `${cls} ${active === key ? 'active' : ''} ${key === 'tasks' && active === 'board' ? 'mobile-active' : ''}`, 'aria-label':label, 'aria-current':active === key || (key === 'tasks' && active === 'board') ? 'page' : null }, tabIcon(key), h('span', {class:'tab-label'}, label), extra);
   return [
     h(
       'header',
       { class: 'topbar' },
-      h('a', { class: 'brand', href: '#/projects', title: release() && i18n.t`Версия ${release()}` }, h('img', { class: 'brand-icon', src: '/icons/favicon-32.png?v=c76fb7f1fa02', alt: '' }), 'AI Guild', h('span', { class: 'version desktop-only' }, state.config?.version ? `${state.config.version} · ${state.config.build}` : '')),
+      h('a', { class: 'brand', href: '#/projects', title: release() && i18n.t`Версия ${release()}` }, h('img', { class: 'brand-icon', src: '/icons/favicon-32.png?v=c76fb7f1fa02', alt: '' }), 'AI Guild', h('span', { class: 'version desktop-only' }, state.config?.version ? `${appVersion.version} · ${appVersion.build}` : '')),
       h(
         'nav',
         { class: 'nav row', style: 'flex-wrap:nowrap;gap:2px' },
         link('#/projects', i18n.t('Проекты'), 'projects'),
-        link('#/board', i18n.t('Доска'), 'board'),
+        link('#/board', i18n.t('Доска'), 'board', null, 'desktop-only'),
         link('#/timeline', i18n.t('График'), 'timeline', null, 'desktop-only'),
-        link('#/tasks', i18n.t('Задачи'), 'tasks', null, 'desktop-only'),
+        link('#/tasks', i18n.t('Задачи'), 'tasks'),
         link('#/inbox', i18n.t('Входящие'), 'inbox', state.inboxCount ? h('span', { class: 'badge' }, String(state.inboxCount)) : null),
-        link('#/analytics', i18n.t('Аналитика'), 'analytics', null, 'desktop-only'),
+        link('#/analytics', i18n.t('Аналитика'), 'analytics'),
+        link('#/settings', i18n.t('Настройки'), 'settings', null, 'mobile-only'),
         link('#/accounts', i18n.t('Аккаунты'), 'accounts', null, 'desktop-only'),
         link('#/connect', i18n.t('Подключение'), 'connect', null, 'desktop-only'),
       ),
@@ -461,7 +485,7 @@ function shell(active, ...content) {
       i18n.languagePicker(),
       h(
         'a',
-        { href: '#/profile', class: `row profile-link ${active === 'profile' ? 'active' : ''}`, style: 'flex-wrap:nowrap', title: i18n.t('Профиль и устройство') },
+        { href: '#/settings', class: `row profile-link ${active === 'settings' ? 'active' : ''}`, style: 'flex-wrap:nowrap', title: i18n.t('Настройки') },
         avatar(state.me.name, state.me.kind),
         h('span', { class: 'small' }, state.me.name),
       ),
@@ -726,6 +750,7 @@ async function tasksView(context) {
       h('span', { class: 'spacer' }),
       h('button', { class: 'primary', onclick: () => newTaskDialog(projects) }, i18n.t('Новая задача')),
     ),
+    taskModes('tasks'),
     h(
       'div',
       { class: 'filters' },
@@ -1991,8 +2016,12 @@ function connectView() {
 
 async function profileView() {
   const blocker = pwa.passkeyBlocker(state.config);
-  const [passkeys, pushOn, identities, secondFactor, devices] = await Promise.all([api('GET', '/passkeys'), pwa.pushEnabled().catch(() => false), api('GET', '/auth/identities'),api('GET','/auth/2fa/settings'),state.me.kind==='human'?api('GET','/devices'):[]]);
   const err = h('div', { class: 'error small', role: 'alert' });
+  const optional = (promise) => promise.catch((ex) => { err.textContent = ex.message; return null; });
+  const [passkeys, pushOn, identities, secondFactor, devices] = await Promise.all([
+    optional(api('GET', '/passkeys')), pwa.pushEnabled().catch(() => false),
+    optional(api('GET', '/auth/identities')), optional(api('GET','/auth/2fa/settings')),
+    state.me.kind==='human' ? optional(api('GET','/devices')) : []]);
   const run = (fn) => async (e) => {
     err.textContent = '';
     const button = e.currentTarget;
@@ -2010,8 +2039,8 @@ async function profileView() {
   const installed = pwa.isStandalone();
 
   return shell(
-    'profile',
-    h('div', { class: 'page-head' }, h('h1', null, i18n.t('Профиль')), h('span', { class: 'spacer' }), h('button', { onclick: logout }, i18n.t('Выйти'))),
+    'settings',
+    h('div', { class: 'page-head' }, h('h1', null, i18n.t('Настройки')), h('span', { class: 'spacer' }), h('button', { onclick: logout }, i18n.t('Выйти'))),
     h(
       'div',
       { class: 'stack' },
@@ -2024,13 +2053,26 @@ async function profileView() {
       h(
         'nav',
         { class: 'card task-list mobile-only' },
-        h('a', { class: 'task-row', href: '#/tasks', style: 'grid-template-columns:1fr' }, i18n.t('Все задачи списком')),
         h('a', { class: 'task-row', href: '#/timeline', style: 'grid-template-columns:1fr' }, i18n.t('График работ')),
-        h('a', { class: 'task-row', href: '#/analytics', style: 'grid-template-columns:1fr' }, i18n.t('Аналитика')),
         h('a', { class: 'task-row', href: '#/accounts', style: 'grid-template-columns:1fr' }, i18n.t('Аккаунты и ключи')),
         h('a', { class: 'task-row', href: '#/connect', style: 'grid-template-columns:1fr' }, i18n.t('Подключение агентов')),
       ),
-      state.me.kind === 'human' && h('section', { class: 'card pad stack' },
+      h(
+        'section',
+        { class: 'card pad stack' },
+        h('h2', null, i18n.t('Уведомления')),
+        h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Push, когда агент сдал результат, ответил в вашей задаче или упомянул вас.')),
+        pushOn
+          ? h('div', { class: 'row' }, h('span', { class: 'chip st-done' }, h('span', { class: 'dot' }), i18n.t('Включены на этом устройстве')), h('button', { onclick: run(() => pwa.disablePush(api)) }, i18n.t('Выключить')))
+          : pushBlock
+            ? h('div', { class: 'muted small' }, pushBlock)
+            : h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.enablePush(api)) }, i18n.t('Включить уведомления'))),
+      ),
+      h('section', {class:'card pad stack about-app'},
+        h('h2',null,i18n.t('О приложении')),
+        h('div',{class:'row'},h('strong',null,'AI Guild'),h('span',{class:'spacer'}),h('span',{class:'mono'},i18n.t`Версия ${release()}`)),
+        h('div',null,h('button',{onclick:run(() => pwa.updateApp())},i18n.t('Обновить приложение')))),
+      state.me.kind === 'human' && devices && h('section', { class: 'card pad stack' },
         h('h2',null,i18n.t('Устройства')),
         h('p',{class:'muted small',style:'margin:0'},i18n.t('Один браузер или установка приложения — одно устройство. Повторные входы объединяются.')),
         devices.map(device=>h('div',{class:'device-row'},
@@ -2051,7 +2093,7 @@ async function profileView() {
             })},i18n.t('Завершить входы'))))),
         !devices.length&&h('p',{class:'muted small'},i18n.t('Активных устройств нет')),
       ),
-      state.me.kind === 'human' && h('section', { class: 'card pad stack' },
+      state.me.kind === 'human' && secondFactor && h('section', { class: 'card pad stack' },
         h('h2',null,i18n.t('Двухэтапный вход')),
         h('p',{class:'muted',style:'margin:0'},secondFactor.enabled?i18n.t('После входа требуется код по одному из подключённых каналов.'):i18n.t('Включите дополнительное подтверждение входа кодом. Это необязательно.')),
         Object.entries(factorLabels).map(([channel,label])=>{
@@ -2063,7 +2105,7 @@ async function profileView() {
         !Object.values(secondFactor.available).some(Boolean)&&h('p',{class:'muted small'},i18n.t('Отправка кодов пока не настроена администратором.')),
         h('p',{class:'muted small',style:'margin:0'},i18n.t('Добавьте оба канала, чтобы иметь запасной способ подтверждения. Для изменения 2FA может потребоваться войти заново.')),
       ),
-      state.me.kind === 'human' && h('section', { class: 'card pad stack' },
+      state.me.kind === 'human' && identities && h('section', { class: 'card pad stack' },
         h('h2', null, i18n.t('Способы входа')),
         h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Привяжите Google и Telegram, чтобы входить без API-ключа.')),
         Object.entries(providerLabels).map(([provider, label]) => {
@@ -2081,7 +2123,7 @@ async function profileView() {
                 location.assign(result.authorization_url);
               }) }, i18n.t('Привязать')));
         })),
-      h(
+      passkeys && h(
         'section',
         { class: 'card pad stack' },
         h('h2', null, i18n.t`Вход по ${bio}`),
@@ -2103,17 +2145,6 @@ async function profileView() {
         blocker
           ? h('div', { class: 'muted small' }, blocker)
           : h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.passkeyRegister(api, pwa.deviceName())) }, passkeys.length ? i18n.t('Добавить ещё один') : i18n.t`Включить ${bio}`)),
-      ),
-      h(
-        'section',
-        { class: 'card pad stack' },
-        h('h2', null, i18n.t('Уведомления')),
-        h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Push, когда агент сдал результат, ответил в вашей задаче или упомянул вас.')),
-        pushOn
-          ? h('div', { class: 'row' }, h('span', { class: 'chip st-done' }, h('span', { class: 'dot' }), i18n.t('Включены на этом устройстве')), h('button', { onclick: run(() => pwa.disablePush(api)) }, i18n.t('Выключить')))
-          : pushBlock
-            ? h('div', { class: 'muted small' }, pushBlock)
-            : h('div', null, h('button', { class: 'primary', onclick: run(() => pwa.enablePush(api)) }, i18n.t('Включить уведомления'))),
       ),
       h(
         'section',
@@ -2313,6 +2344,7 @@ async function boardView(project, context) {
   return shell(
     'board',
     h('div', { class: 'page-head' }, h('h1', null, i18n.t('Доска')), h('span', { class: 'spacer' }), h('button', { class: 'primary', onclick: () => newTaskDialog(projects, { project: selection.project }) }, i18n.t('Новая задача'))),
+    taskModes('board'),
     h(
       'div',
       { class: 'filters' },
@@ -2537,7 +2569,7 @@ const navigation = createNavigation({
     const [, route] = key.split('/');
     const labels = { tasks: i18n.t('Задачи'), projects: i18n.t('Проекты'), board: i18n.t('Доска'),
       timeline: i18n.t('График'), inbox: i18n.t('Входящие'), analytics: i18n.t('Аналитика'),
-      accounts: i18n.t('Аккаунты'), connect: i18n.t('Подключение'), profile: i18n.t('Профиль') };
+      accounts: i18n.t('Аккаунты'), connect: i18n.t('Подключение'), profile: i18n.t('Настройки'), settings: i18n.t('Настройки') };
     app.replaceChildren(...shell(route || 'projects',
       h('div', { class: 'page-head' }, h('h1', null, labels[route] || i18n.t('Проекты'))),
       h('div', { class: 'card empty', role: 'status', 'aria-busy': 'true' }, i18n.t('Загрузка…'))));
@@ -2563,7 +2595,7 @@ async function routeView(key, context) {
   if (route === 'analytics') return analyticsView();
   if (route === 'accounts') return accountsView();
   if (route === 'connect') return connectView();
-  if (route === 'profile') return profileView();
+  if (route === 'profile' || route === 'settings') return profileView();
   return projectsView();
 }
 
@@ -2642,7 +2674,7 @@ async function boot() {
 pwa.registerServiceWorker((url) => {
   location.hash = new URL(url).hash || '#/inbox';
 });
-pwa.onInstallChange(() => location.hash.startsWith('#/profile') && render());
+pwa.onInstallChange(() => /^#\/(profile|settings)/.test(location.hash) && render());
 addEventListener('online', () => {
   flushOutbox();
   state.poll?.().catch(() => {});

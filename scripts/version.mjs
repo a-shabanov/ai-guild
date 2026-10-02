@@ -36,5 +36,14 @@ if (command) {
   );
   const pkg = resolve(root, 'server/package.json');
   writeFileSync(pkg, readFileSync(pkg, 'utf8').replace(/"version": "[^"]*"/, `"version": "${current.version}"`));
+  const lockFile = resolve(root, 'server/package-lock.json');
+  const lock = JSON.parse(readFileSync(lockFile, 'utf8'));
+  lock.version = lock.packages[''].version = current.version;
+  writeFileSync(lockFile, JSON.stringify(lock, null, 2) + '\n');
+  writeFileSync(resolve(root, 'server/public/version.js'),
+    `// Written by scripts/version.mjs from version.json. Do not edit.\nexport default ${JSON.stringify(current)};\n`);
+  const worker = resolve(root, 'server/public/sw.js');
+  writeFileSync(worker, readFileSync(worker, 'utf8').replace(/const VERSION = '[^']*';/,
+    `const VERSION = 'v${current.version}-b${current.build}';`));
 }
 console.log(`${current.version} (${current.build})`);

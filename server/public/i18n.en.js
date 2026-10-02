@@ -1,5 +1,12 @@
 // English interface catalogue. Russian source phrases are stable message keys.
 export default {
+  "Обновить приложение": "Update app",
+  "Для обновления приложения нужна сеть": "An internet connection is required to update the app",
+  "Не удалось обновить приложение. Попробуйте ещё раз.": "Could not update the app. Please try again.",
+  "Настройки": "Settings",
+  "О приложении": "About",
+  "Вид задач": "Task view",
+  "Список": "List",
   "К выполнению": "To do",
   "В работе": "In progress",
   "На проверке": "In review",

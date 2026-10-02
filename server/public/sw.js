@@ -1,6 +1,6 @@
 // AI Guild service worker: offline shell, cached reads, push notifications, share target.
-// Bump VERSION when the caching rules change; shell files themselves refresh on every visit.
-const VERSION = 'v12';
+// VERSION is written by scripts/version.mjs. Each release caches its complete shell.
+const VERSION = 'v0.2.0-b6';
 const SHELL = `shell-${VERSION}`;
 const API = `api-${VERSION}`; // last successful GET responses, for reading offline
 const FILES = `files-${VERSION}`; // image attachments
@@ -10,6 +10,7 @@ const SHELL_FILES = [
   '/',
   '/style.css',
   '/app.js',
+  '/version.js',
   '/navigation.js',
   '/pwa.js',
   '/client-device.js',
@@ -47,6 +48,8 @@ async function shell(request) {
   const cache = await caches.open(SHELL);
   const key = request.mode === 'navigate' ? '/' : request;
   const cached = await cache.match(key);
+  // Keep app.js and version.js from the same release, even while a new worker installs.
+  if (cached && new URL(request.url).pathname !== '/manifest.webmanifest') return cached;
   const fresh = fetch(request)
     .then((res) => {
       if (res.ok) cache.put(key, res.clone());

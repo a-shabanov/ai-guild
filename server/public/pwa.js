@@ -156,6 +156,32 @@ export async function registerServiceWorker(onNavigate) {
   }
 }
 
+export async function updateApp() {
+  if (!navigator.onLine) throw new Error(i18n.t('Для обновления приложения нужна сеть'));
+  const registration = await navigator.serviceWorker?.getRegistration();
+  if (registration) {
+    await registration.update();
+    const worker = registration.installing || registration.waiting;
+    if (worker && worker.state !== 'activated') {
+      await new Promise((resolve, reject) => {
+        const finish = () => {
+          if (!['activated', 'redundant'].includes(worker.state)) return;
+          clearTimeout(timeout);
+          worker.removeEventListener('statechange', finish);
+          worker.state === 'activated' ? resolve() : reject(new Error(i18n.t('Не удалось обновить приложение. Попробуйте ещё раз.')));
+        };
+        const timeout = setTimeout(() => {
+          worker.removeEventListener('statechange', finish);
+          reject(new Error(i18n.t('Не удалось обновить приложение. Попробуйте ещё раз.')));
+        }, 15000);
+        worker.addEventListener('statechange', finish);
+        finish();
+      });
+    }
+  }
+  location.reload();
+}
+
 export function forgetPrivateData() {
   navigator.serviceWorker?.controller?.postMessage({ type: 'logout' });
   try {
