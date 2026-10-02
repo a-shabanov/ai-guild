@@ -76,7 +76,7 @@ export function createNavigation({ load, show, loading, error, changed, getScrol
       else { loading(key); setScroll(0); }
       return entry.view && !reload ? refreshEntry(entry, true) : build(entry);
     },
-    refresh() { return refreshEntry(active); },
+    refresh({ rebuild = false } = {}) { return refreshEntry(active, rebuild); },
     clear() {
       ++generation;
       cache.clear();

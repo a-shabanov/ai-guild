@@ -226,3 +226,30 @@ test('the cache is bounded and sensitive profile screens are excluded', async ()
   f.requests.at(-1)!.result.resolve({ key: 'profile' });
   await profile;
 });
+
+test('manual refresh updates screens without polling and preserves a polled draft', async () => {
+  const f = fixture();
+  const first = f.navigation.navigate('inbox');
+  await tick();
+  f.requests[0].result.resolve({ key: 'inbox' });
+  await first;
+  const reload = f.navigation.refresh({ rebuild: true });
+  await tick();
+  assert.equal(f.displayed?.key, 'inbox');
+  f.requests[1].result.resolve({ key: 'new inbox' });
+  await reload;
+  assert.equal(f.displayed?.key, 'new inbox');
+
+  const task = f.navigation.navigate('task');
+  await tick();
+  const view = { key: 'task', draft: 'unsent comment' };
+  let polls = 0;
+  f.requests[2].context.setPoll(async () => { polls++; });
+  f.requests[2].result.resolve(view);
+  await task;
+  await f.navigation.refresh({ rebuild: true });
+  assert.equal(polls, 1);
+  assert.equal(f.displayed, view);
+  assert.equal(f.displayed?.draft, 'unsent comment');
+  assert.equal(f.requests.length, 3);
+});

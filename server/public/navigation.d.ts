@@ -23,6 +23,6 @@ export function createNavigation<View>(options: {
   limit?: number;
 }): {
   navigate(key: string, options?: { reload?: boolean }): Promise<unknown> | undefined;
-  refresh(): Promise<unknown> | undefined;
+  refresh(options?: { rebuild?: boolean }): Promise<unknown> | undefined;
   clear(): void;
 };

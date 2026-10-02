@@ -4,6 +4,7 @@ import * as i18n from './i18n.js';
 
 import * as pwa from './pwa.js';
 import { createNavigation } from './navigation.js';
+import { installPullToRefresh } from './pull-to-refresh.js';
 import appVersion from './version.js';
 
 const STATUS = {
@@ -2725,6 +2726,16 @@ async function boot() {
     flushOutbox();
   }
 }
+
+installPullToRefresh({
+  enabled: () => !!state.me && !booting,
+  refresh: async () => {
+    await navigation.refresh({ rebuild: true });
+    await refreshInboxCount();
+  },
+  failed: (error) => toast(error.message),
+  labels: { pull: i18n.t('Потяните для обновления'), release: i18n.t('Отпустите для обновления'), refreshing: i18n.t('Обновляем…') },
+});
 
 pwa.registerServiceWorker((url) => {
   navigateToHash(new URL(url).hash || '#/inbox');
