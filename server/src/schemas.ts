@@ -256,6 +256,13 @@ export const PushSubscription = z.object({
   keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(200) }),
 });
 
+export const NotificationPreferences = z.strictObject({
+  comments: z.boolean(), results: z.boolean(), statuses: z.boolean(), assignments: z.boolean(),
+  tasks: z.boolean(), attachments: z.boolean(), activity: z.boolean(),
+});
+export const UpdateNotificationPreferences = NotificationPreferences.partial()
+  .refine((value) => Object.keys(value).length > 0, 'Choose at least one notification category');
+
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'hex colour like #2a78d6');
 
 export const CreateProject = z.object({

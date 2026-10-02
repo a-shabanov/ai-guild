@@ -17,6 +17,8 @@ const WithKey = z.object({ account: S.Account, key: z.string() });
 
 const ops: Op[] = [
   {method:'post',path:'/api/push/test',summary:'Send a test Web Push to your own subscription',body:S.PushSubscription.pick({endpoint:true}),response:z.object({ok:z.boolean()})},
+  {method:'get',path:'/api/push/preferences',summary:'Your push event categories across all devices',response:S.NotificationPreferences},
+  {method:'patch',path:'/api/push/preferences',summary:'Change your push event categories; inbox events stay available',body:S.UpdateNotificationPreferences,response:S.NotificationPreferences},
   {method:'get',path:'/api/devices',summary:'Your active devices; installation metadata is descriptive, not authentication',response:z.array(S.AccountDevice)},
   {method:'patch',path:'/api/devices/{id}',summary:'Rename your device',body:S.RenameDevice,response:z.object({id:z.number(),name:z.string()})},
   {method:'delete',path:'/api/devices/{id}',summary:'Revoke all sessions and linked notification subscriptions of your device',response:z.object({ok:z.boolean()})},

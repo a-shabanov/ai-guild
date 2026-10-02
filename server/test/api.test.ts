@@ -910,3 +910,29 @@ test('APNs: involved people get a push; dead tokens are forgotten', async () => 
   await api('ivan', 'DELETE', '/api/push/apns', { token: live });
   assert.equal((await api('ivan', 'GET', '/api/config')).body.apns, true);
 });
+
+test('account preferences suppress attachment APNs but allow replies and retain inbox events', async () => {
+  const token = 'cafe'.repeat(16);
+  await api('ivan', 'POST', '/api/push/apns', { token, environment: 'sandbox' });
+  assert.equal((await api('ivan', 'PATCH', '/api/push/preferences', { attachments: false })).status, 200);
+  const svc = await import('../src/service.ts');
+  const auth = await import('../src/auth.ts');
+  const push = await import('../src/push.ts');
+  const schemas = await import('../src/schemas.ts');
+  const owner = await auth.authenticate(keys.ivan);
+  const actor = await auth.authenticate(keys.claude);
+  const task = await svc.createTask({ ...owner, history: true }, schemas.CreateTask.parse({ title: 'APNs preference fixture' }));
+  const event = await pool.query(`insert into events(task_id, actor_id, type, data)
+    values($1,$2,'attachment_added',$3) returning id`, [task.id, actor.id, JSON.stringify({filename:'screen.png'})]);
+  const prior = apnsRequests.length;
+  await push.notifyEvent(event.rows[0].id);
+  assert.equal(apnsRequests.length, prior);
+  assert((await api('ivan', 'GET', '/api/inbox')).body.events.some((e:any) => e.id === event.rows[0].id));
+  const comment = await pool.query(`insert into events(task_id, actor_id, type, data)
+    values($1,$2,'comment_added',$3) returning id`, [task.id, actor.id, JSON.stringify({body:'reply stays enabled'})]);
+  await push.notifyEvent(comment.rows[0].id);
+  assert.equal(apnsRequests.length, prior + 1);
+  assert.equal(apnsRequests.at(-1)!.body.aps.alert.body, 'reply stays enabled');
+  await api('ivan', 'PATCH', '/api/push/preferences', { attachments: true });
+  await api('ivan', 'DELETE', '/api/push/apns', { token });
+});

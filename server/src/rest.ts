@@ -8,6 +8,7 @@ import { apnsConfigured } from './apns.ts';
 import { buildOpenApi } from './openapi.ts';
 import * as passkeys from './passkeys.ts';
 import * as push from './push.ts';
+import * as notifications from './notification-preferences.ts';
 import * as S from './schemas.ts';
 import * as svc from './service.ts';
 import * as social from './social-auth.ts';
@@ -448,6 +449,15 @@ export function restRouter(): Router {
 
   r.get('/push/key', async (_req, res) => {
     res.json({ key: await push.publicKey() });
+  });
+  r.get('/push/preferences', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json(await notifications.getPreferences(req.actor));
+  });
+  r.patch('/push/preferences', jsonBody, async (req, res) => {
+    sameOrigin(req);
+    res.set('Cache-Control', 'no-store');
+    res.json(await notifications.updatePreferences(req.actor, parse(S.UpdateNotificationPreferences, req.body)));
   });
   r.post('/push/subscriptions', jsonBody, async (req, res) => {
     await push.subscribe(req.actor, parse(S.PushSubscription, req.body), req.headers['user-agent'],req.deviceId);

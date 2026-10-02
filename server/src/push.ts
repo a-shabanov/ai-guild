@@ -7,6 +7,7 @@ import type { Actor } from './auth.ts';
 import { config } from './config.ts';
 import { q, q1, type Row } from './db.ts';
 import { HttpError } from './errors.ts';
+import { wantsNotification } from './notification-preferences.ts';
 
 type Vapid = { publicKey: string; privateKey: string };
 let vapid: Promise<Vapid> | undefined;
@@ -153,12 +154,13 @@ export async function unregisterApnsDevice(actor: Actor, token: string): Promise
 // Same audience as the inbox: everyone involved in the task or @mentioned, plus people
 // overseeing the agents' new tasks, results and blockers; never the actor.
 export async function notifyEvent(eventId: number): Promise<void> {
-  const recipients = await q(
-    `select r.id as account_id, e.type, e.data, e.task_id, t.title, ac.name as actor_name
+  const recipients = (await q(
+    `select r.id as account_id, e.type, e.data, e.task_id, t.title, ac.name as actor_name, np.preferences
        from events e
        join tasks t on t.id = e.task_id
        join accounts ac on ac.id = e.actor_id
        join accounts r on r.id <> e.actor_id and not r.disabled
+       left join notification_preferences np on np.account_id = r.id
       where e.id = $1 and e.type <> 'task_edited'
         and (exists (select 1 from push_subscriptions s where s.account_id = r.id)
              or exists (select 1 from apns_devices d where d.account_id = r.id))
@@ -168,7 +170,7 @@ export async function notifyEvent(eventId: number): Promise<void> {
              or (r.kind = 'human' and (e.type in ('task_created', 'result_submitted')
                  or (e.type = 'status_changed' and e.data->>'to' in ('review', 'blocked')))))`,
     [eventId],
-  );
+  )).filter((recipient) => wantsNotification(recipient.type, recipient.preferences));
   if (!recipients.length) return;
 
   const event = recipients[0]!;
