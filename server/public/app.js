@@ -2799,7 +2799,7 @@ pwa.onInstallChange(() => /^#\/(profile|settings)/.test(location.hash) && render
 addEventListener('online', () => {
   flushOutbox();
   if (!booting) {
-    if (state.me) render({ reload: false });
+    if (state.me) Promise.resolve(navigation.refresh({ rebuild: true })).catch(() => {});
     else boot();
   }
 });
