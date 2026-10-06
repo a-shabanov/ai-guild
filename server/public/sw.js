@@ -1,8 +1,8 @@
 // AI Guild service worker: offline shell, settings and update status, cached reads, push notifications, share target.
 // VERSION is written by scripts/version.mjs. Each release caches its complete shell.
-const VERSION = 'v0.3.10-b22';
+const VERSION = 'v0.3.11-b23';
 // Refresh existing installations even when this fix ships within the same release.
-const SHELL = `shell-${VERSION}-zoom-lock-1-profiles-1-board-feedback-1`;
+const SHELL = `shell-${VERSION}-zoom-lock-1-profiles-1-board-feedback-1-wiki-1`;
 const API = `api-${VERSION}`; // last successful GET responses, for reading offline
 const FILES = `files-${VERSION}`; // image attachments
 const SHARE = 'share'; // payload handed over by the OS share sheet

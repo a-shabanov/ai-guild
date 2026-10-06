@@ -11,6 +11,7 @@ import * as push from './push.ts';
 import * as notifications from './notification-preferences.ts';
 import * as S from './schemas.ts';
 import * as svc from './service.ts';
+import * as wiki from './wiki.ts';
 import * as social from './social-auth.ts';
 import * as twoFactor from './two-factor.ts';
 import * as devices from './devices.ts';
@@ -582,6 +583,26 @@ export function restRouter(): Router {
   });
   r.get('/projects', async (req, res) => {
     res.json(req.query.details ? await svc.listProjectDetails() : await svc.listProjects());
+  });
+  const wikiScope = (req: Request) => parse(S.WikiScope, { project_id: Number(req.params.id) }).project_id;
+  const wikiPageId = (req: Request) => parse(S.WikiPageRef, { project_id: Number(req.params.id), page_id: Number(req.params.pageId) }).page_id;
+  r.get('/projects/:id/wiki', async (req, res) => {
+    res.json(await wiki.listPages(wikiScope(req)));
+  });
+  r.post('/projects/:id/wiki', jsonBody, async (req, res) => {
+    sameOrigin(req);
+    res.status(201).json(await wiki.createPage(req.actor, wikiScope(req), parse(S.CreateWikiPage, req.body)));
+  });
+  r.get('/projects/:id/wiki/:pageId', async (req, res) => {
+    res.json(await wiki.getPage(wikiScope(req), wikiPageId(req)));
+  });
+  r.patch('/projects/:id/wiki/:pageId', jsonBody, async (req, res) => {
+    sameOrigin(req);
+    res.json(await wiki.updatePage(req.actor, wikiScope(req), wikiPageId(req), parse(S.UpdateWikiPage, req.body)));
+  });
+  r.delete('/projects/:id/wiki/:pageId', jsonBody, async (req, res) => {
+    sameOrigin(req);
+    res.json(await wiki.deletePage(req.actor, wikiScope(req), wikiPageId(req), parse(S.DeleteWikiPage, req.body)));
   });
   r.get('/projects/:id', async (req, res) => {
     res.json(await svc.getProject(id(req)));

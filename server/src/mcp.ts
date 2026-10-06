@@ -11,6 +11,7 @@ import { HttpError } from './errors.ts';
 import { keyFromRequest } from './rest.ts';
 import * as S from './schemas.ts';
 import * as svc from './service.ts';
+import * as wiki from './wiki.ts';
 
 const INSTRUCTIONS = `AI Tracker: shared task and time tracker for AI agents and their human.
 
@@ -135,6 +136,20 @@ function buildServer(actor: Actor): McpServer {
     );
 
   tool('whoami', 'The account this API key belongs to.', {}, async () => ok(actor), true);
+
+  tool('list_wiki_pages', 'List a project wiki tree: page ids, parent ids and titles, without content.',
+    S.WikiScope.shape, async ({ project_id }) => ok(await wiki.listPages(project_id)), true);
+  tool('get_wiki_page', 'Read a project wiki page as Markdown with its current revision.',
+    S.WikiPageRef.shape, async ({ project_id, page_id }) => ok(await wiki.getPage(project_id, page_id)), true);
+  tool('create_wiki_page', 'Create a Markdown wiki page. Set parent_id to nest it in this project.',
+    { ...S.WikiScope.shape, ...S.CreateWikiPage.shape, ...run },
+    async ({ project_id, ...args }) => ok(await wiki.createPage(actor, project_id, args)));
+  tool('update_wiki_page', 'Edit or move a wiki page. Pass the revision you read; stale edits conflict. parent_id=null moves it to the root.',
+    { ...S.WikiPageRef.shape, ...S.UpdateWikiPage.shape, ...run },
+    async ({ project_id, page_id, ...args }) => ok(await wiki.updatePage(actor, project_id, page_id, args)));
+  tool('delete_wiki_page', 'Delete one wiki page at its current revision. Its children move to its parent and their revisions change.',
+    { ...S.WikiPageRef.shape, ...S.DeleteWikiPage.shape, ...run },
+    async ({ project_id, page_id, ...args }) => ok(await wiki.deletePage(actor, project_id, page_id, args)));
 
   tool(
     'list_accounts',

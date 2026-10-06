@@ -1679,12 +1679,132 @@ async function projectView(name, context) {
       tile(i18n.t('Стоимость'), fmtMoney(p.cost_usd), i18n.t('по прайсу API')),
     ),
     h('div', { class: 'card pad', style: 'margin-bottom:16px' }, statusBar(p)),
+    h('div', { class: 'card pad wiki-project-entry' }, h('div', null, h('h2', null, i18n.t('Wiki')), h('p', { class: 'muted' }, i18n.t('Документация и решения в страницах и разделах.'))),
+      h('a', { class: 'button', href: `#/projects/${encodeURIComponent(p.name)}/wiki` }, i18n.t('Открыть wiki'))),
     h('div', { class: 'page-head' }, h('h2', null, i18n.t('Задачи')), filter, h('span', { class: 'spacer' }), h('button', { class: 'primary', onclick: async () => newTaskDialog(await api('GET', '/projects').catch(() => []), { project: p.name }) }, i18n.t('Новая задача'))),
     list,
   );
 }
 
 // ---------- inbox ----------
+
+// ---------- project wiki ----------
+const wikiHref = (project, id) => `#/projects/${encodeURIComponent(project.name)}/wiki${id ? `/${id}` : ''}`;
+
+function wikiEditor(project, pages, page = null, parentId = null) {
+  const excluded = new Set(page ? [page.id] : []);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const p of pages) if (excluded.has(p.parent_id) && !excluded.has(p.id)) { excluded.add(p.id); changed = true; }
+  }
+  const depthLabel = p => {
+    let depth = 0, parent = pages.find(x => x.id === p.parent_id);
+    while (parent) { depth++; parent = pages.find(x => x.id === parent.parent_id); }
+    return `${'— '.repeat(depth)}${p.title}`;
+  };
+  let dirty = false, saving = false;
+  const warnUnload = e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } };
+  const dlg = dialog(page ? i18n.t('Редактировать страницу') : i18n.t('Новая страница'), (form, { close, err }) => {
+    const title = h('input', { required: true, maxlength: 200, value: page?.title ?? '', placeholder: i18n.t('Название страницы') });
+    const parent = h('select', { 'aria-label': i18n.t('Родительская страница') },
+      h('option', { value: '' }, i18n.t('Корень wiki')),
+      pages.filter(p => !excluded.has(p.id)).map(p => h('option', { value: p.id }, depthLabel(p))));
+    parent.value = String(page?.parent_id ?? parentId ?? '');
+    const content = h('textarea', { class: 'wiki-source', rows: 14, maxlength: 100000,
+      value: page?.content ?? '', 'aria-label': i18n.t('Содержимое страницы'), placeholder: i18n.t('Текст страницы в Markdown') });
+    const preview = h('div', { class: 'wiki-preview', hidden: true });
+    const toggle = h('button', { type: 'button', class: 'ghost small', onclick: () => {
+      preview.hidden = !preview.hidden; content.hidden = !content.hidden;
+      toggle.textContent = preview.hidden ? i18n.t('Предпросмотр') : i18n.t('Редактор');
+      if (!preview.hidden) preview.replaceChildren(markdown(content.value));
+    } }, i18n.t('Предпросмотр'));
+    form.addEventListener('input', () => { dirty = true; });
+    const discard = () => { if (!saving && (!dirty || confirm(i18n.t('Закрыть без сохранения изменений?')))) close(); };
+    const save = h('button', { type: 'submit', class: 'primary' }, i18n.t('Сохранить'));
+    form.addEventListener('submit', async e => {
+      e.preventDefault(); if (saving) return;
+      if (!title.value.trim()) { title.focus(); return; }
+      saving = true; save.disabled = true; err.textContent = '';
+      try {
+        const saved = await api(page ? 'PATCH' : 'POST', `/projects/${project.id}/wiki${page ? `/${page.id}` : ''}`, {
+          title: title.value.trim(), content: content.value, parent_id: parent.value ? Number(parent.value) : null,
+          ...(page && { revision: page.revision }),
+        });
+        dirty = false; close(); toast(i18n.t('Страница сохранена'));
+        if (location.hash === wikiHref(project, saved.id)) await render();
+        else location.hash = wikiHref(project, saved.id);
+      } catch (error) {
+        err.textContent = error.message.includes('wiki page changed')
+          ? i18n.t('Страница уже изменена. Скопируйте свой текст, закройте редактор и откройте страницу заново.') : error.message;
+      } finally { saving = false; save.disabled = false; }
+    });
+    form.append(h('label', { class: 'field' }, i18n.t('Название страницы'), title),
+      h('label', { class: 'field' }, i18n.t('Родительская страница'), parent),
+      h('div', { class: 'row wiki-editor-tools' }, h('span', { class: 'muted small' }, 'Markdown'), h('span', { class: 'spacer' }), toggle),
+      content, preview,
+      h('div', { class: 'actions' }, h('button', { type: 'button', onclick: discard }, i18n.t('Отмена')), save));
+  });
+  dlg.classList.add('wiki-editor');
+  dlg.addEventListener('cancel', e => {
+    e.preventDefault(); if (!saving && (!dirty || confirm(i18n.t('Закрыть без сохранения изменений?')))) dlg.close();
+  });
+  window.addEventListener('beforeunload', warnUnload);
+  dlg.addEventListener('close', () => window.removeEventListener('beforeunload', warnUnload), { once: true });
+  dlg.querySelector('input').focus();
+}
+
+async function wikiView(name, pageId, context) {
+  const projects = await api('GET', '/projects?details=1');
+  const project = projects.find(p => p.name.toLowerCase() === name.toLowerCase());
+  if (!project) return shell('projects', h('div', { class: 'empty' }, i18n.t`Проекта «${name}» нет`));
+  const pages = await api('GET', `/projects/${project.id}/wiki`);
+  const page = pageId ? await api('GET', `/projects/${project.id}/wiki/${pageId}`) : null;
+  context.setTitle(`${page?.title ?? 'Wiki'} · ${project.name} · AI Guild`);
+  const byParent = new Map();
+  for (const p of pages) { if (!byParent.has(p.parent_id)) byParent.set(p.parent_id, []); byParent.get(p.parent_id).push(p); }
+  const branch = parentId => (byParent.get(parentId) ?? []).map(p => {
+    const link = h('a', { class: `wiki-tree-link${p.id === page?.id ? ' selected' : ''}`, href: wikiHref(project, p.id),
+      ...(p.id === page?.id && { 'aria-current': 'page' }) }, p.title);
+    return byParent.has(p.id) ? h('details', { open: true, class: 'wiki-branch' }, h('summary', null, link),
+      h('div', { class: 'wiki-children' }, branch(p.id))) : h('div', { class: 'wiki-leaf' }, link);
+  });
+  const crumbs = [];
+  let ancestor = page && pages.find(p => p.id === page.parent_id);
+  while (ancestor) { crumbs.unshift(ancestor); ancestor = pages.find(p => p.id === ancestor.parent_id); }
+  const children = byParent.get(page?.id ?? null) ?? [];
+  const remove = async () => {
+    if (!confirm(i18n.t`Удалить страницу «${page.title}»? Дочерние страницы сохранятся уровнем выше.`)) return;
+    try {
+      await api('DELETE', `/projects/${project.id}/wiki/${page.id}`, { revision: page.revision });
+      toast(i18n.t('Страница удалена')); location.hash = wikiHref(project, page.parent_id);
+    } catch (error) { toast(error.message.includes('wiki page changed') ? i18n.t('Страница уже изменена. Обновите её перед удалением.') : error.message); }
+  };
+  return shell('projects',
+    h('nav', { class: 'wiki-breadcrumb small', 'aria-label': i18n.t('Навигация wiki') },
+      h('a', { href: `#/projects/${encodeURIComponent(project.name)}` }, project.name), ' / ',
+      h('a', { href: wikiHref(project) }, i18n.t('Wiki')), crumbs.map(p => [' / ', h('a', { href: wikiHref(project, p.id) }, p.title)])),
+    h('div', { class: 'page-head' }, h('h1', null, i18n.t('Wiki')), h('span', { class: 'muted' }, project.name), h('span', { class: 'spacer' }),
+      h('button', { class: 'primary', onclick: () => wikiEditor(project, pages) }, i18n.t('Новая страница'))),
+    h('div', { class: 'wiki-layout' },
+      h('aside', { class: 'card wiki-sidebar' }, h('h2', { class: 'small muted' }, i18n.t('Страницы')),
+        pages.length ? h('nav', { 'aria-label': i18n.t('Дерево страниц') }, branch(null)) : h('p', { class: 'muted small' }, i18n.t('Страниц пока нет'))),
+      h('article', { class: 'card pad wiki-article' },
+        page ? [
+          h('div', { class: 'wiki-page-head' }, h('h2', null, page.title), h('div', { class: 'row' },
+            h('button', { onclick: () => wikiEditor(project, pages, null, page.id) }, i18n.t('Добавить подстраницу')),
+            h('button', { onclick: () => wikiEditor(project, pages, page) }, i18n.t('Изменить')),
+            h('button', { class: 'ghost danger', onclick: remove }, i18n.t('Удалить')))),
+          h('p', { class: 'muted small' }, i18n.t`Обновлено ${fmtDate(page.updated_at)} · ${page.updated_by_name ?? '—'}`),
+          page.content ? markdown(page.content) : h('p', { class: 'muted' }, i18n.t('Страница пока пуста')),
+        ] : [h('h2', null, i18n.t('База знаний проекта')),
+          h('p', { class: 'muted' }, i18n.t('Храните документацию и решения в страницах и вложенных разделах.')),
+          !pages.length && h('button', { class: 'primary', onclick: () => wikiEditor(project, pages) }, i18n.t('Создать первую страницу'))],
+        children.length > 0 && h('section', { class: 'wiki-child-list' }, h('h3', null, page ? i18n.t('Подстраницы') : i18n.t('Разделы')),
+          children.map(p => h('a', { href: wikiHref(project, p.id), class: 'wiki-child-link' }, p.title, h('span', { 'aria-hidden': true }, '→')))),
+      )),
+  );
+}
 
 async function inboxView() {
   const { events } = await api('GET', '/inbox');
@@ -3012,11 +3132,12 @@ const navigation = createNavigation({
   },
   getScroll: () => window.scrollY,
   setScroll: (top) => window.scrollTo({ top, behavior: 'instant' }),
-  cacheable: (key) => /^#\/(projects|board|timeline)(\/.*)?$/.test(key) || /^#\/(tasks|inbox|analytics|connect)\/?$/.test(key),
+  cacheable: (key) => !/^#\/projects\/[^/]+\/wiki/.test(key) && (/^#\/(projects|board|timeline)(\/.*)?$/.test(key) || /^#\/(tasks|inbox|analytics|connect)\/?$/.test(key)),
 });
 
 async function routeView(key, context) {
   const [, route, arg] = key.split('/');
+  if (route === 'projects' && arg && key.split('/')[3] === 'wiki') return wikiView(decodeURIComponent(arg), key.split('/')[4], context);
   if (route === 'tasks' && arg) return taskView(Number(arg), context);
   if (route === 'projects' && arg) return projectView(decodeURIComponent(arg), context);
   if (route === 'tasks') return tasksView(context);

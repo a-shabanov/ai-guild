@@ -1,4 +1,33 @@
 [hidden] { display: none !important; }
+.wiki-project-entry { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.wiki-project-entry h2 { margin: 0; }
+.wiki-project-entry p { margin-bottom: 0; }
+.wiki-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; align-items: start; }
+.wiki-sidebar { padding: 20px 14px; overflow: auto; max-height: 75vh; }
+.wiki-sidebar h2 { margin: 0 10px 14px; }
+.wiki-tree-link { display: inline-block; padding: 8px 10px; border-radius: 6px; color: var(--text); overflow-wrap: anywhere; text-decoration: none; }
+.wiki-tree-link:hover, .wiki-tree-link.selected { background: var(--surface-2); color: var(--accent); }
+.wiki-branch summary { display: list-item; cursor: pointer; margin-left: 18px; }
+.wiki-children { padding-left: 18px; }
+.wiki-leaf { padding-left: 18px; }
+.wiki-article { min-width: 0; min-height: 320px; overflow-wrap: anywhere; }
+.wiki-page-head { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 16px; }
+.wiki-page-head h2 { margin: 0; flex: 1; min-width: 180px; }
+.wiki-page-head .row { flex-wrap: wrap; }
+.wiki-breadcrumb { margin: 8px 0 20px; overflow-wrap: anywhere; }
+.wiki-child-list { margin-top: 32px; border-top: 1px solid var(--border); padding-top: 12px; }
+.wiki-child-link { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); text-decoration: none; }
+dialog.wiki-editor { width: min(780px, calc(100vw - 32px)); max-width: 780px; }
+.wiki-source { width: 100%; font-family: ui-monospace, monospace; resize: vertical; min-height: 240px; }
+.wiki-preview { min-height: 240px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }
+.wiki-editor-tools { margin: 10px 0; }
+@media (max-width: 700px) {
+  .wiki-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .wiki-sidebar { max-height: 240px; }
+  .wiki-page-head { display: block; }
+  .wiki-page-head .row { margin-top: 14px; }
+  .wiki-project-entry { flex-wrap: wrap; }
+}
 .notification-choice {
   display: flex;
   justify-content: space-between;

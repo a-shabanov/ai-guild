@@ -17,6 +17,11 @@ type Op = {
 const WithKey = z.object({ account: S.Account, key: z.string() });
 
 const ops: Op[] = [
+  { method: 'get', path: '/api/projects/{id}/wiki', summary: 'Project wiki tree, without page content', response: z.array(S.WikiPageSummary) },
+  { method: 'post', path: '/api/projects/{id}/wiki', summary: 'Create a Markdown wiki page', body: S.CreateWikiPage, response: S.WikiPage },
+  { method: 'get', path: '/api/projects/{id}/wiki/{pageId}', summary: 'Read wiki page and revision', response: S.WikiPage },
+  { method: 'patch', path: '/api/projects/{id}/wiki/{pageId}', summary: 'Edit or move wiki page; stale revision returns 409', body: S.UpdateWikiPage, response: S.WikiPage },
+  { method: 'delete', path: '/api/projects/{id}/wiki/{pageId}', summary: 'Delete page; preserve children at its parent', body: S.DeleteWikiPage, response: z.object({ ok: z.boolean() }) },
   {method:'post',path:'/api/push/test',summary:'Send a test Web Push to your own subscription',body:S.PushSubscription.pick({endpoint:true}),response:z.object({ok:z.boolean()})},
   {method:'get',path:'/api/push/preferences',summary:'Your push event categories across all devices',response:S.NotificationPreferences},
   {method:'patch',path:'/api/push/preferences',summary:'Change your push event categories; inbox events stay available',body:S.UpdateNotificationPreferences,response:S.NotificationPreferences},
@@ -86,6 +91,9 @@ export function buildOpenApi(): object {
     const parameters: any[] = [];
     if (op.path.includes('{id}')) {
       parameters.push({ name: 'id', in: 'path', required: true, schema: { type: 'integer' } });
+    }
+    if (op.path.includes('{pageId}')) {
+      parameters.push({ name: 'pageId', in: 'path', required: true, schema: { type: 'integer', minimum: 1 } });
     }
     if (op.path.includes('{provider}')) {
       parameters.push({ name: 'provider', in: 'path', required: true, schema: { type: 'string', enum: ['google', 'telegram'] } });

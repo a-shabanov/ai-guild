@@ -290,6 +290,32 @@ export const UpdateProject = z.object({
   color: color.nullable().optional(),
 });
 
+export const WikiScope = z.object({ project_id: z.number().int().positive() });
+export const WikiPageRef = WikiScope.extend({ page_id: z.number().int().positive() });
+export const CreateWikiPage = RunInfo.extend({
+  title: z.string().trim().min(1).max(200),
+  content: z.string().max(100_000).default('').describe('Markdown'),
+  parent_id: z.number().int().positive().nullable().default(null),
+});
+export const UpdateWikiPage = RunInfo.extend({
+  revision: z.number().int().positive().describe('Current revision; stale edits return a conflict'),
+  title: z.string().trim().min(1).max(200).optional(),
+  content: z.string().max(100_000).optional().describe('Markdown'),
+  parent_id: z.number().int().positive().nullable().optional(),
+});
+export const DeleteWikiPage = RunInfo.extend({
+  revision: z.number().int().positive().describe('Current revision; children move to the deleted page\'s parent'),
+});
+export const WikiPage = z.object({
+  id: z.number(), project_id: z.number(), parent_id: z.number().nullable(),
+  title: z.string(), content: z.string(), revision: z.number(),
+  created_by: z.number().nullable(), updated_by: z.number().nullable(),
+  created_by_name: z.string().nullable(), updated_by_name: z.string().nullable(),
+  model: z.string().nullable(), effort: z.string().nullable(),
+  created_at: z.string(), updated_at: z.string(),
+});
+export const WikiPageSummary = WikiPage.omit({ content: true });
+
 export const Project = z.object({
   id: z.number(),
   name: z.string(),

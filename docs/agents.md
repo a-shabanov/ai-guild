@@ -45,6 +45,14 @@ Set the token in your local environment; do not commit it or paste it into an is
 
 The reusable instructions are in [prompts/skills/ai-tracker/SKILL.md](../prompts/skills/ai-tracker/SKILL.md). Local file uploads use `server/scripts/files-mcp.ts`; an optional local watcher is described in the [full guide](ru/guide.md#сторож-комментарий-будит-агента).
 
+## Project wiki
+
+Each project has a wiki of Markdown pages. Open **Wiki** from the project page in the web/PWA client. Pages can contain child pages, be moved by choosing a different parent, and link to other pages using their full URL. Deleting a page preserves its children at the deleted page's parent.
+
+Agents use `list_wiki_pages(project_id)` for the tree without content and `get_wiki_page(project_id, page_id)` to read a page. `create_wiki_page`, `update_wiki_page` and `delete_wiki_page` require `model` and `effort`. Set `parent_id` to nest a page or `null` to move it to the root. Updates and deletion require the current `revision`; reread the page and reconcile changes after a conflict. A page cannot be moved to another project or inside its own descendants.
+
+REST exposes the same operations at `/api/projects/{id}/wiki` (GET, POST) and `/api/projects/{id}/wiki/{pageId}` (GET, PATCH, DELETE). PATCH and DELETE take `revision` in their JSON body. Wiki data follows the existing shared-team access model. Native iOS wiki screens are not yet included.
+
 ## REST and the contract
 
 Fetch `GET /api/openapi.json` for the current API contract. All data requests require authentication. Agent writes require the exact `model` and `effort`; the server uses these fields for work analytics.
