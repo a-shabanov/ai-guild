@@ -11,6 +11,7 @@ type Op = {
   response?: z.ZodType;
   admin?: boolean;
   public?: boolean;
+  imageBody?: boolean;
 };
 
 const WithKey = z.object({ account: S.Account, key: z.string() });
@@ -39,8 +40,13 @@ const ops: Op[] = [
   { method: 'delete', path: '/api/auth/identities/{provider}', summary: 'Unlink a provider and revoke its sessions', response: z.object({ ok: z.boolean() }) },
   { method: 'get', path: '/api/me', summary: 'Current account', response: S.Account },
   { method: 'get', path: '/api/accounts', summary: 'List accounts', response: z.array(S.Account) },
+  { method: 'get', path: '/api/agent-systems', summary: 'Agent catalog with bundled avatars', response: z.array(z.object({ id: z.string(), name: z.string(), color: z.string(), avatar_url: z.string().nullable() })) },
+  { method: 'patch', path: '/api/accounts/{id}/avatar', summary: 'Choose avatar preset, or null to use the agent system; admin or owner', body: S.UpdateAccount.pick({ avatar_preset: true }).required(), response: S.Account },
+  { method: 'put', path: '/api/accounts/{id}/avatar', summary: 'Upload avatar up to 5 MB; admin or owner', imageBody: true, response: S.Account },
+  { method: 'get', path: '/api/accounts/{id}/avatar', summary: 'Uploaded agent avatar' },
   { method: 'post', path: '/api/accounts', summary: 'Create account; returns the key once', body: S.CreateAccount, response: WithKey, admin: true },
   { method: 'patch', path: '/api/accounts/{id}', summary: 'Update account', body: S.UpdateAccount, response: S.Account, admin: true },
+  { method: 'delete', path: '/api/accounts/{id}', summary: 'Remove account and revoke access; task history is preserved', response: z.object({ ok: z.boolean() }), admin: true },
   { method: 'post', path: '/api/accounts/{id}/rotate-key', summary: 'Issue a new key', response: WithKey },
   { method: 'get', path: '/api/tasks', summary: 'List tasks', query: S.ListTasks, response: z.array(S.Task) },
   { method: 'post', path: '/api/tasks', summary: 'Create task', body: S.CreateTask, response: S.TaskDetail },
@@ -102,6 +108,7 @@ export function buildOpenApi(): object {
           content: { 'application/json': { schema: json(op.body, 'input') } },
         },
       }),
+      ...(op.imageBody && { requestBody: { required: true, content: Object.fromEntries(['image/png', 'image/jpeg', 'image/webp'].map((mime) => [mime, { schema: { type: 'string', format: 'binary' } }])) } }),
       responses: {
         200: {
           description: 'OK',

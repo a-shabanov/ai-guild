@@ -250,14 +250,14 @@ export async function unlink(actor: Actor, provider: Provider) {
 
 export async function createInvitation(actor: Actor, accountId: number) {
   requireAdmin(actor);
-  const account = await q1(`select id from accounts where id = $1 and kind = 'human' and not disabled`, [accountId]);
-  if (!account) throw new HttpError(400, 'invitation requires an enabled human account');
   const token = random();
   // Reissuing also invalidates old, unfinished OAuth flows via ON DELETE CASCADE.
   const client = await pool.connect();
   try {
     await client.query('begin');
-    await client.query('select id from accounts where id = $1 for update', [accountId]);
+    const account = (await client.query('select kind, disabled from accounts where id=$1 and deleted_at is null for update', [accountId])).rows[0];
+    if (!account) throw new HttpError(404, 'account not found');
+    if (account.kind !== 'human' || account.disabled) throw new HttpError(400, 'invitation requires an enabled human account');
     await client.query('delete from account_invitations where account_id = $1', [accountId]);
     const result = await client.query(`insert into account_invitations(account_id, token_hash, created_by)
       values ($1,$2,$3) returning expires_at`, [accountId, hashKey(token), actor.id]);

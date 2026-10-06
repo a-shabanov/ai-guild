@@ -15,6 +15,8 @@ import * as social from './social-auth.ts';
 import * as twoFactor from './two-factor.ts';
 import * as devices from './devices.ts';
 import * as appLock from './app-lock.ts';
+import * as avatars from './account-avatars.ts';
+import { listAgentSystems } from './agent-systems.ts';
 
 export const SESSION_COOKIE = 'ait_session';
 const TWO_FACTOR_COOKIE = 'ait_two_factor';
@@ -395,11 +397,36 @@ export function restRouter(): Router {
   r.get('/accounts', async (_req, res) => {
     res.json(await svc.listAccounts());
   });
+  r.get('/agent-systems', async (_req, res) => res.json(await listAgentSystems()));
+  const avatarAccount = async (accountId: number) => (await svc.listAccounts()).find((a) => a.id === accountId);
+  r.patch('/accounts/:id/avatar', jsonBody, async (req, res) => {
+    sameOrigin(req);
+    const input = parse(S.UpdateAccount.pick({ avatar_preset: true }).required(), req.body);
+    await avatars.pickAvatar(req.actor, id(req), input.avatar_preset);
+    res.json(await avatarAccount(id(req)));
+  });
+  r.put('/accounts/:id/avatar', async (req, _res, next) => {
+    sameOrigin(req);
+    await avatars.authorizeAvatar(req.actor, id(req));
+    next();
+  }, express.raw({ type: () => true, limit: avatars.AVATAR_LIMIT }), async (req, res) => {
+    await avatars.uploadAvatar(req.actor, id(req), req.body, (req.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase());
+    res.json(await avatarAccount(id(req)));
+  });
+  r.get('/accounts/:id/avatar', async (req, res) => {
+    const image = await avatars.getAvatar(id(req), typeof req.query.v === 'string' ? req.query.v : undefined);
+    res.set({ 'Content-Type': image.mime, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-cache' });
+    res.sendFile(image.path);
+  });
   r.post('/accounts', jsonBody, async (req, res) => {
     res.status(201).json(await svc.createAccount(parse(S.CreateAccount, req.body), req.actor));
   });
   r.patch('/accounts/:id', jsonBody, async (req, res) => {
     res.json(await svc.updateAccount(req.actor, id(req), parse(S.UpdateAccount, req.body)));
+  });
+  r.delete('/accounts/:id', async (req, res) => {
+    await svc.deleteAccount(req.actor, id(req));
+    res.json({ ok: true });
   });
   r.post('/accounts/:id/rotate-key', async (req, res) => {
     res.json(await svc.rotateKey(req.actor, id(req)));

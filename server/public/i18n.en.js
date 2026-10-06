@@ -1,5 +1,16 @@
 // English interface catalogue. Russian source phrases are stable message keys.
 export default {
+  "Принимаем…": "Accepting…",
+  "Задача принята": "Task accepted",
+  "Редактировать профиль: {0}": "Edit profile: {0}",
+  "Профиль сохранён": "Profile saved",
+  "Профиль сохранён, но аватарка не загрузилась. Повторите сохранение. {0}": "Profile saved, but the avatar upload failed. Save again to retry. {0}",
+  "Удалить профиль {0}?": "Delete profile {0}?",
+  "Удалить профиль": "Delete profile",
+  "Профиль исчезнет из списка. Его ключи и способы входа перестанут работать, все сессии завершатся.": "The profile will disappear from the list. Its keys and sign-in methods will stop working, and all sessions will end.",
+  "Задачи, комментарии и учёт времени сохранятся. Удаление нельзя отменить.": "Tasks, comments and time logs will be preserved. Deletion cannot be undone.",
+  "Профиль удалён": "Profile deleted",
+  '— нет данных о расходе; + ? — итог неполный.': '— usage unavailable; + ? means the total is incomplete.',
   "Войти с passkey": "Sign in with a passkey",
   "Вход в аккаунт · Passkeys": "Account sign-in \u00b7 Passkeys",
   "Добавить passkey": "Add a passkey",
@@ -514,5 +525,17 @@ export default {
   "Браузер попросит подтвердить passkey через {0} или код устройства. Если passkey ещё нет, предложит создать его.": "Your browser will ask you to confirm a passkey using {0} or your device code. If you do not have a passkey yet, it will offer to create one.",
   "Быстрая разблокировка недоступна в этом браузере. Её можно подключить позже в настройках.": "Quick unlock is unavailable in this browser. You can enable it later in settings."
  ,
-  "PIN можно установить позже в настройках защиты приложения.": "You can set a PIN later in app protection settings."
+  "PIN можно установить позже в настройках защиты приложения.": "You can set a PIN later in app protection settings.",
+  "Готовые аватарки": "Avatar gallery",
+  "Текущая аватарка": "Current avatar",
+  "По системе агента": "Use agent system",
+  "Загрузить свою аватарку": "Upload your own avatar",
+  "Выберите PNG, JPEG или WebP до 5 МБ.": "Choose a PNG, JPEG or WebP up to 5 MB.",
+  "Не удалось прочитать изображение.": "Could not read the image.",
+  "Аватарка агента": "Agent avatar",
+  "PNG, JPEG или WebP, до 5 МБ": "PNG, JPEG or WebP, up to 5 MB",
+  "Дождитесь загрузки изображения.": "Wait for the image to load.",
+  "Аватарка: {0}": "Avatar: {0}",
+  "Аватарка": "Avatar",
+  "Аккаунт создан, но аватарка не сохранена. Её можно изменить в списке аккаунтов. {0}": "Account created, but the avatar was not saved. You can change it in the accounts list. {0}"
 };

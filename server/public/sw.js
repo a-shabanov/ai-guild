@@ -1,7 +1,8 @@
 // AI Guild service worker: offline shell, settings and update status, cached reads, push notifications, share target.
 // VERSION is written by scripts/version.mjs. Each release caches its complete shell.
-const VERSION = 'v0.3.10-b18';
-const SHELL = `shell-${VERSION}`;
+const VERSION = 'v0.3.10-b22';
+// Refresh existing installations even when this fix ships within the same release.
+const SHELL = `shell-${VERSION}-zoom-lock-1-profiles-1-board-feedback-1`;
 const API = `api-${VERSION}`; // last successful GET responses, for reading offline
 const FILES = `files-${VERSION}`; // image attachments
 const SHARE = 'share'; // payload handed over by the OS share sheet
@@ -13,6 +14,7 @@ const SHELL_FILES = [
   '/',
   '/style.css',
   '/app.js',
+  '/world-agents.js',
   '/app-lock-view.js',
   '/version.js',
   '/navigation.js',
@@ -163,7 +165,7 @@ self.addEventListener('fetch', (event) => {
     if (!request.headers.has('range')) event.respondWith(attachment(request));
     return;
   }
-  if (/^\/api\/projects\/\d+\/logo$/.test(url.pathname)) {
+  if (/^\/api\/(projects\/\d+\/logo|accounts\/\d+\/avatar)$/.test(url.pathname)) {
     event.respondWith(attachment(request));
     return;
   }

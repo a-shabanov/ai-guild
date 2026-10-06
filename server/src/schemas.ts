@@ -58,20 +58,33 @@ const onBehalf = {
     .describe('When it was actually said or done, if not now (recording history)'),
 };
 
+const SystemId = z
+  .string()
+  .trim()
+  .max(40)
+  .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,39}$/, 'letters, digits, _ . - only; max 40 chars');
+
 export const CreateAccount = z.object({
   name: z
     .string()
     .trim()
     .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,39}$/, 'letters, digits, _ . - only; max 40 chars'),
   kind: z.enum(['human', 'agent']),
-  system: z.string().trim().max(40).optional().describe('e.g. "claude", "codex"'),
+  system: SystemId.optional().describe('e.g. "claude", "codex", "gemini"'),
+  avatar_preset: SystemId.nullable()
+    .optional()
+    .describe('Catalog avatar system id; null clears a previous pick'),
   role: z.enum(['admin', 'member']).default('member'),
 });
 
 export const UpdateAccount = z.object({
+  name: CreateAccount.shape.name.optional(),
   disabled: z.boolean().optional(),
   role: z.enum(['admin', 'member']).optional(),
-  system: z.string().trim().max(40).nullable().optional(),
+  system: SystemId.nullable().optional(),
+  avatar_preset: SystemId.nullable()
+    .optional()
+    .describe('Catalog avatar system id; null clears a previous pick'),
 });
 
 export const AuthProvider = z.enum(['google', 'telegram']);
@@ -314,8 +327,9 @@ export const Account = z.object({
   disabled: z.boolean(),
   created_at: ts,
   last_seen_at: ts.nullable(),
+  avatar_preset: z.string().nullable(),
+  avatar_url: z.string().nullable().describe('Custom uploaded avatar; catalog avatars stay under /avatars/{system}.png'),
 });
-
 export const Task = z.object({
   id: z.number(),
   title: z.string(),

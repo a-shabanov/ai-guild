@@ -1,4 +1,5 @@
 import * as i18n from './i18n.js';
+import { WORLD_AGENTS, CATALOG_AVATAR_IDS, AGENT_COLORS } from './world-agents.js';
 // AI Guild web UI. No build step, no dependencies. All DOM is built with h(), never innerHTML,
 // so text coming from agents cannot inject markup.
 
@@ -7,6 +8,8 @@ import { createNavigation } from './navigation.js';
 import { installPullToRefresh } from './pull-to-refresh.js';
 import appVersion from './version.js';
 import { passcodeView, quickUnlockView, disposePasscodeView } from './app-lock-view.js';
+
+pwa.installZoomLock();
 
 const STATUS = {
   todo: i18n.t('К выполнению'),
@@ -81,12 +84,13 @@ function h(tag, attrs, ...children) {
 
 async function api(method, path, body) {
   const isForm = body instanceof FormData;
+  const isImage = body instanceof Blob;
   let res;
   try {
     res = await fetch('/api' + path, {
       method,
-      headers: {...pwa.clientHeaders(),...(body && !isForm ? { 'Content-Type': 'application/json' } : {})},
-      body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
+      headers: {...pwa.clientHeaders(),...(isImage ? { 'Content-Type': body.type } : body && !isForm ? { 'Content-Type': 'application/json' } : {})},
+      body: body ? (isForm || isImage ? body : JSON.stringify(body)) : undefined,
     });
   } catch {
     setOffline(true);
@@ -184,7 +188,6 @@ function asTree(tasks) {
 
 // People are circles, agents are rounded squares; every agent system has its own colour,
 // and two letters tell apart names that start the same (claude, codex).
-const AGENT_COLORS = { claude: '#c2603f', codex: '#0f8a6c' };
 const SPARE_COLORS = ['#4a3aa7', '#a3358f', '#2a78d6', '#8a6d00', '#b03a3a', '#3d7a1f'];
 
 function avatarColor(account, name) {
@@ -199,11 +202,12 @@ function avatar(name, kind) {
   const account = state.accounts.find((a) => a.name === name);
   const who = kind ?? account?.kind ?? 'agent';
   const system = (account?.system ?? name ?? '').toLowerCase();
-  const image = who === 'agent' && ['claude', 'codex'].includes(system) ? `/avatars/${system}.png` : null;
+  const preset = account?.avatar_preset ?? system;
+  const image = who === 'agent' ? account?.avatar_url ?? (CATALOG_AVATAR_IDS.has(preset) ? `/avatars/${preset}.png` : null) : null;
   return h(
     'span',
     { class: `avatar ${who}`, 'aria-hidden': 'true', style: image ? 'background:transparent' : who === 'human' ? '' : `background:${avatarColor(account, name)}` },
-    image ? h('img', { src: image, alt: '' }) : (name ?? '?').slice(0, 1).toUpperCase() + (name ?? '').slice(1, 2).toLowerCase(),
+    image ? h('img', { src: image, alt: '', onerror: (e) => { const box = e.target.parentElement; box.style.background = avatarColor(account, name); box.textContent = (name ?? '?').slice(0, 2); } }) : (name ?? '?').slice(0, 1).toUpperCase() + (name ?? '').slice(1, 2).toLowerCase(),
   );
 }
 const kindOf = (name) => state.accounts.find((a) => a.name === name)?.kind;
@@ -529,24 +533,26 @@ function taskModes(active) {
 function shell(active, ...content) {
   const link = (href, label, key, extra, cls = '') =>
     h('a', { href, class: `${cls} ${active === key ? 'active' : ''} ${key === 'tasks' && active === 'board' ? 'mobile-active' : ''}`, 'aria-label':label, 'aria-current':active === key || (key === 'tasks' && active === 'board') ? 'page' : null }, tabIcon(key), h('span', {class:'tab-label'}, label), extra);
+  const tabs = (placement) =>
+    h(
+      'nav',
+      { class: `nav row ${placement}`, 'aria-label': 'AI Guild', style: 'flex-wrap:nowrap;gap:2px' },
+      link('#/projects', i18n.t('Проекты'), 'projects'),
+      link('#/board', i18n.t('Доска'), 'board', null, 'desktop-only'),
+      link('#/timeline', i18n.t('График'), 'timeline', null, 'desktop-only'),
+      link('#/tasks', i18n.t('Задачи'), 'tasks'),
+      link('#/inbox', i18n.t('Входящие'), 'inbox', state.inboxCount ? h('span', { class: 'badge' }, String(state.inboxCount)) : null),
+      link('#/analytics', i18n.t('Аналитика'), 'analytics'),
+      link('#/settings', i18n.t('Настройки'), 'settings', h('span',{class:'badge update-indicator',hidden:!state.updateAvailable,'aria-label':i18n.t('Есть обновление')},'•'), 'mobile-only'),
+      link('#/accounts', i18n.t('Аккаунты'), 'accounts', null, 'desktop-only'),
+      link('#/connect', i18n.t('Подключение'), 'connect', null, 'desktop-only'),
+    );
   return [
     h(
       'header',
       { class: 'topbar' },
       h('a', { class: 'brand', href: '#/projects', title: release() && i18n.t`Версия ${release()}` }, h('img', { class: 'brand-icon', src: '/icons/favicon-32.png?v=c76fb7f1fa02', alt: '' }), 'AI Guild', h('span', { class: 'version desktop-only' }, state.config?.version ? `${appVersion.version} · ${appVersion.build}` : '')),
-      h(
-        'nav',
-        { class: 'nav row', style: 'flex-wrap:nowrap;gap:2px' },
-        link('#/projects', i18n.t('Проекты'), 'projects'),
-        link('#/board', i18n.t('Доска'), 'board', null, 'desktop-only'),
-        link('#/timeline', i18n.t('График'), 'timeline', null, 'desktop-only'),
-        link('#/tasks', i18n.t('Задачи'), 'tasks'),
-        link('#/inbox', i18n.t('Входящие'), 'inbox', state.inboxCount ? h('span', { class: 'badge' }, String(state.inboxCount)) : null),
-        link('#/analytics', i18n.t('Аналитика'), 'analytics'),
-        link('#/settings', i18n.t('Настройки'), 'settings', h('span',{class:'badge update-indicator',hidden:!state.updateAvailable,'aria-label':i18n.t('Есть обновление')},'•'), 'mobile-only'),
-        link('#/accounts', i18n.t('Аккаунты'), 'accounts', null, 'desktop-only'),
-        link('#/connect', i18n.t('Подключение'), 'connect', null, 'desktop-only'),
-      ),
+      tabs('desktop-tabs'),
       h('span', { class: 'spacer' }),
       i18n.languagePicker(),
       h(
@@ -557,6 +563,8 @@ function shell(active, ...content) {
         h('span',{class:'badge update-indicator',hidden:!state.updateAvailable,'aria-label':i18n.t('Есть обновление')},'•'),
       ),
     ),
+    // Keep fixed tabs outside the sticky/scrollable header for iOS async scrolling.
+    tabs('mobile-tabs'),
     h('div', { class: 'offline-bar', role: 'status' }, i18n.t('Нет сети — офлайн-режим')),
     h('main', null, content),
   ];
@@ -993,8 +1001,21 @@ const isText = (a) => a.kind === 'log' || a.mime === 'image/svg+xml';
 const canPreview = (a) => isPicture(a) || a.kind === 'video' || isText(a);
 const extension = (a) => (a.filename.includes('.') ? a.filename.split('.').pop() : 'file').slice(0, 5).toUpperCase();
 
+function pauseVideos(except) {
+  for (const video of document.querySelectorAll('video')) if (video !== except) video.pause();
+}
+
+function attachmentVideo(a, autoplay = false) {
+  return h('video', {
+    src: a.url, controls: true, playsinline: true, preload: 'metadata', autoplay,
+    onplay: (event) => pauseVideos(event.currentTarget),
+  });
+}
+
 // Opens one attachment large, with the rest of the task's previewable files a key press away.
 function openViewer(files, current) {
+  // The card's player can otherwise keep decoding behind the modal on iPhone.
+  pauseVideos();
   const items = files.filter(canPreview);
   let at = Math.max(0, items.findIndex((a) => a.id === current.id));
   let asSource = false;
@@ -1009,7 +1030,7 @@ function openViewer(files, current) {
 
   const content = (a) => {
     if (isPicture(a)) return h('img', { src: a.url, alt: a.filename });
-    if (a.kind === 'video') return h('video', { src: a.url, controls: true, autoplay: true });
+    if (a.kind === 'video') return attachmentVideo(a, true);
     // The frame has no rights in the tracker: see the headers of /attachments/:id/content.
     return h('iframe', {
       src: isPage(a) && !asSource ? `${a.url}?render=1` : a.url,
@@ -1019,7 +1040,16 @@ function openViewer(files, current) {
     });
   };
 
+  function releaseVideo() {
+    for (const video of stage.querySelectorAll('video')) {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    }
+  }
+
   function show(index) {
+    releaseVideo();
     at = index;
     const a = items[at];
     stage.replaceChildren(content(a));
@@ -1056,7 +1086,7 @@ function openViewer(files, current) {
     {
       class: 'viewer',
       'aria-label': i18n.t('Просмотр вложения'),
-      onclose: () => dlg.remove(),
+      onclose: () => { releaseVideo(); dlg.remove(); },
       // A click outside the content lands on the dialog or the stage themselves.
       onclick: (e) => (e.target === dlg || e.target === stage) && dlg.close(),
       onkeydown: (e) => {
@@ -1078,7 +1108,7 @@ function openViewer(files, current) {
 function fileCard(a, all = [a]) {
   let preview;
   if (isPicture(a)) preview = h('img', { src: a.url, alt: a.filename, loading: 'lazy' });
-  else if (a.kind === 'video') preview = h('video', { src: a.url, controls: true, preload: 'metadata' });
+  else if (a.kind === 'video') preview = attachmentVideo(a);
   else preview = h('div', { class: 'file-icon' }, extension(a));
   const name = h('div', { class: 'file-name', title: a.filename }, a.filename, h('div', { class: 'muted' }, `${fmtSize(a.size)} · ${a.account_name}`));
   const open = (e) => {
@@ -1283,7 +1313,8 @@ async function taskView(id, context) {
           h('span', null, i18n.t('Исполнитель')),
           select(
             t.assignee_name ?? '',
-            [['', i18n.t('Не назначен')], ...state.accounts.filter((a) => !a.disabled || a.name === t.assignee_name).map((a) => [a.name, a.name])],
+            [['', i18n.t('Не назначен')], ...state.accounts.filter((a) => !a.disabled || a.name === t.assignee_name).map((a) => [a.name, a.name]),
+              ...(t.assignee_name && !state.accounts.some((a) => a.name === t.assignee_name) ? [[t.assignee_name, t.assignee_name]] : [])],
             (v) => patch({ assignee: v || null }),
           ),
           h('span', null, i18n.t('Уровень')),
@@ -1745,6 +1776,13 @@ const autoReviewEstimate = (row) =>
   row.keys?.[0] === 'codex-auto-review'
     ? (row.input_tokens * 0.2 + row.cache_read_tokens * 0.02 + row.cache_write_tokens * 0.25 + row.output_tokens * 1.2) / 1e6
     : null;
+function analyticsTokens(row, field = 'tokens') {
+  const unknown = row[`unknown_${field}_entries`] ?? 0;
+  if (row.entries > 0 && unknown === row.entries) return '—';
+  const total = field === 'tokens' ? row.input_tokens + row.output_tokens : row[field];
+  return `${fmtCompact(total)}${unknown ? ' + ?' : ''}`;
+}
+
 function analyticsCost(row) {
   const estimate = autoReviewEstimate(row);
   if (estimate > 0 && (row.unpriced_entries || row.cost_usd === 0)) return `≈${fmtMoney(estimate)}*`;
@@ -1758,8 +1796,8 @@ function rowTip(title, r) {
     [
       i18n.t`Время: ${fmtDuration(r.seconds)}`,
       i18n.t`Задач: ${r.tasks} · записей: ${r.entries}`,
-      i18n.t`Токены: ${fmtCompact(r.input_tokens)} in / ${fmtCompact(r.output_tokens)} out`,
-      i18n.t`Кэш: ${fmtCompact(r.cache_read_tokens)} чтение / ${fmtCompact(r.cache_write_tokens)} запись`,
+      i18n.t`Токены: ${analyticsTokens(r, 'input_tokens')} in / ${analyticsTokens(r, 'output_tokens')} out`,
+      i18n.t`Кэш: ${analyticsTokens(r, 'cache_read_tokens')} чтение / ${analyticsTokens(r, 'cache_write_tokens')} запись`,
       i18n.t`Стоимость: ${analyticsCost(r)}`,
     ].join('\n'),
   ];
@@ -1781,7 +1819,7 @@ function barChart(rows) {
             'div',
             { class: 'bar-track' },
             h('div', { class: 'bar', style: `width:calc(${(measureOf(r) / max) * 100}% - ${(measureOf(r) / max) * 84}px)` }),
-            h('span', { class: 'bar-value' }, MEASURES[an.measure].fmt(measureOf(r))),
+            h('span', { class: 'bar-value' }, an.measure === 'tokens' ? analyticsTokens(r) : MEASURES[an.measure].fmt(measureOf(r))),
           ),
           ...rowTip(name, r),
         ),
@@ -1843,10 +1881,10 @@ function statsTable(rows, groupLabel) {
             h('td', { class: 'num' }, fmtDuration(r.seconds)),
             h('td', { class: 'num' }, String(r.tasks)),
             h('td', { class: 'num' }, String(r.entries)),
-            h('td', { class: 'num' }, fmtCompact(r.input_tokens)),
-            h('td', { class: 'num' }, fmtCompact(r.output_tokens)),
-            h('td', { class: 'num' }, fmtCompact(r.cache_read_tokens)),
-            h('td', { class: 'num' }, fmtCompact(r.cache_write_tokens)),
+            h('td', { class: 'num' }, analyticsTokens(r, 'input_tokens')),
+            h('td', { class: 'num' }, analyticsTokens(r, 'output_tokens')),
+            h('td', { class: 'num' }, analyticsTokens(r, 'cache_read_tokens')),
+            h('td', { class: 'num' }, analyticsTokens(r, 'cache_write_tokens')),
             h('td', { class: 'num' }, analyticsCost(r)),
             h('td', { class: 'num' }, r.seconds && !r.unpriced_entries && !(autoReviewEstimate(r) > 0 && r.cost_usd === 0) ? fmtMoney(r.cost_usd / (r.seconds / 3600)) : '—'),
           ),
@@ -1904,10 +1942,11 @@ async function analyticsView() {
       'div',
       { class: 'tiles' },
       tile(i18n.t('Время работы'), fmtDuration(t.seconds), i18n.t`${t.entries} записей по ${t.tasks} задачам`),
-      tile(i18n.t('Стоимость'), fmtMoney(t.cost_usd), t.unpriced_entries ? i18n.t`${t.unpriced_entries} записей без подтверждённой цены` : t.seconds ? i18n.t`${fmtMoney(t.cost_usd / (t.seconds / 3600))} за час` : null),
-      tile(i18n.t('Токены'), fmtCompact(t.input_tokens + t.output_tokens), i18n.t`${fmtCompact(t.input_tokens)} in · ${fmtCompact(t.output_tokens)} out · кэш ${fmtCompact(t.cache_read_tokens)}`),
+      tile(i18n.t('Стоимость'), analyticsCost(t), t.unpriced_entries ? i18n.t`${t.unpriced_entries} записей без подтверждённой цены` : t.seconds ? i18n.t`${fmtMoney(t.cost_usd / (t.seconds / 3600))} за час` : null),
+      tile(i18n.t('Токены'), analyticsTokens(t), i18n.t`${analyticsTokens(t, 'input_tokens')} in · ${analyticsTokens(t, 'output_tokens')} out · кэш ${analyticsTokens(t, 'cache_read_tokens')}`),
       tile(i18n.t('Задачи'), i18n.t`${st.done ?? 0} готово`, i18n.t`${open} открыто · ${st.review ?? 0} на проверке`),
     ),
+    t.unknown_tokens_entries > 0 && h('p', { class: 'muted small' }, i18n.t('— нет данных о расходе; + ? — итог неполный.')),
     h(
       'div',
       { class: 'charts' },
@@ -1945,6 +1984,164 @@ function showKey(name, key) {
   });
 }
 
+// A pick stays local until Save; closing the dialog leaves the account untouched.
+function agentAvatarPicker(account, systemValue) {
+  let mode = account?.avatar_url ? 'keep' : account?.avatar_preset ? 'preset' : 'auto';
+  let preset = account?.avatar_preset ?? null;
+  let file = null;
+  let objectUrl = null;
+  let checking = false;
+  let sequence = 0;
+  const preview = h('div', { class: 'avatar-preview', 'aria-live': 'polite' });
+  const error = h('div', { class: 'error small', role: 'alert' });
+  const grid = h('div', { class: 'avatar-gallery', role: 'group', 'aria-label': i18n.t('Готовые аватарки') });
+  const choices = [];
+  const choose = (nextMode, nextPreset) => {
+    sequence++;
+    checking = false;
+    mode = nextMode;
+    preset = nextPreset;
+    file = null;
+    input.value = '';
+    error.textContent = '';
+    release();
+    paint();
+  };
+  const release = () => { if (objectUrl) URL.revokeObjectURL(objectUrl); objectUrl = null; };
+  const paint = () => {
+    const id = mode === 'preset' ? preset : systemValue().trim().toLowerCase();
+    const image = mode === 'upload' ? objectUrl : mode === 'keep' ? account.avatar_url : CATALOG_AVATAR_IDS.has(id) ? `/avatars/${id}.png` : null;
+    preview.replaceChildren(
+      h('span', { class: 'avatar agent', style: `background:${image ? 'transparent' : AGENT_COLORS[id] ?? '#4a3aa7'}` }, image ? h('img', { src: image, alt: '' }) : (account?.name ?? '?').slice(0, 2)),
+      h('span', { class: 'small' }, mode === 'upload' ? file.name : mode === 'keep' ? i18n.t('Текущая аватарка') : mode === 'auto' ? i18n.t('По системе агента') : WORLD_AGENTS.find((a) => a.id === preset)?.name ?? preset),
+    );
+    for (const choice of choices) choice.button.setAttribute('aria-pressed', String(choice.mode === mode && (mode !== 'preset' || choice.id === preset)));
+  };
+  const option = (label, nextMode, id, image) => {
+    const button = h('button', { type: 'button', class: 'avatar-choice', onclick: () => choose(nextMode, id) }, image && h('img', { src: image, alt: '', loading: 'lazy' }), h('span', null, label));
+    choices.push({ button, mode: nextMode, id });
+    return button;
+  };
+  const input = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', 'aria-label': i18n.t('Загрузить свою аватарку'), onchange: async () => {
+    const candidate = input.files[0];
+    if (!candidate) return;
+    const current = ++sequence;
+    checking = false;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(candidate.type) || candidate.size > 5 * 1024 ** 2 || !candidate.size) {
+      error.textContent = i18n.t('Выберите PNG, JPEG или WebP до 5 МБ.'); input.value = ''; return;
+    }
+    checking = true;
+    const url = URL.createObjectURL(candidate);
+    try {
+      const img = new Image(); img.src = url; await img.decode();
+      if (current !== sequence) return;
+      release(); objectUrl = url; file = candidate; mode = 'upload'; error.textContent = ''; paint();
+    } catch {
+      if (current === sequence) { error.textContent = i18n.t('Не удалось прочитать изображение.'); input.value = ''; }
+    } finally {
+      if (objectUrl !== url) URL.revokeObjectURL(url);
+      if (current === sequence) checking = false;
+    }
+  } });
+  appendChildren(grid, WORLD_AGENTS.map((a) => option(a.name, 'preset', a.id, `/avatars/${a.id}.png`)));
+  const element = h('fieldset', { class: 'agent-avatar-picker stack' }, h('legend', null, i18n.t('Аватарка агента')), preview,
+    h('div', { class: 'row' }, option(i18n.t('По системе агента'), 'auto', null), account?.avatar_url && option(i18n.t('Текущая аватарка'), 'keep', null)), grid,
+    h('label', { class: 'field' }, i18n.t('Загрузить свою аватарку'), input, h('span', { class: 'muted small' }, i18n.t('PNG, JPEG или WebP, до 5 МБ'))), error);
+  paint();
+  return {
+    element, refresh: paint, dispose: () => { sequence++; release(); },
+    value: () => { if (checking) throw new Error(i18n.t('Дождитесь загрузки изображения.')); return mode === 'preset' ? preset : null; },
+    profilePatch: () => {
+      if (checking) throw new Error(i18n.t('Дождитесь загрузки изображения.'));
+      return mode === 'keep' || mode === 'upload' ? {} : { avatar_preset: mode === 'preset' ? preset : null };
+    },
+    saveUpload: async (id) => { if (mode === 'upload') await api('PUT', `/accounts/${id}/avatar`, file); },
+    save: async (id) => {
+      if (checking) throw new Error(i18n.t('Дождитесь загрузки изображения.'));
+      if (mode === 'keep') return;
+      return mode === 'upload' ? api('PUT', `/accounts/${id}/avatar`, file) : api('PATCH', `/accounts/${id}/avatar`, { avatar_preset: mode === 'preset' ? preset : null });
+    },
+  };
+}
+
+function editAgentAvatar(account) {
+  let picker;
+  const dlg = dialog(i18n.t`Аватарка: ${account.name}`, (form, { close, err }) => {
+    picker = agentAvatarPicker(account, () => account.system ?? account.name);
+    const save = h('button', { class: 'primary' }, i18n.t('Сохранить'));
+    appendChildren(form, picker.element, h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { type: 'button', class: 'ghost', onclick: close }, i18n.t('Отмена')), save));
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault(); save.disabled = true; picker.element.disabled = true; err.textContent = '';
+      try { await picker.save(account.id); close(); await render(); }
+      catch (error) { err.textContent = error.message; }
+      finally { save.disabled = false; picker.element.disabled = false; }
+    });
+  });
+  dlg.classList.add('avatar-dialog');
+  dlg.addEventListener('close', picker.dispose, { once: true });
+}
+
+function editAccount(account) {
+  let picker;
+  let saving = false;
+  const dlg = dialog(i18n.t`Редактировать профиль: ${account.name}`, (form, { close, err }) => {
+    const name = h('input', { required: true, maxlength: 40, pattern: '[a-zA-Z0-9][a-zA-Z0-9_.\\-]{0,39}', value: account.name, autofocus: true,
+      oninput: () => picker?.refresh() });
+    const system = h('input', { value: account.system ?? '', list: 'edit-profile-systems', oninput: () => picker?.refresh() });
+    const role = h('select', { disabled: account.id === state.me.id },
+      h('option', { value: 'member' }, i18n.t('Участник')), h('option', { value: 'admin' }, i18n.t('Администратор')));
+    role.value = account.role;
+    if (account.kind === 'agent') picker = agentAvatarPicker(account, () => system.value || name.value);
+    const fields = h('fieldset', { class: 'profile-fields stack' },
+      h('label', { class: 'field' }, i18n.t('Имя (латиница, для @упоминаний)'), name),
+      h('div', { class: 'grid-2' }, h('label', { class: 'field' }, i18n.t('Тип'), h('span', null, account.kind === 'agent' ? i18n.t('Агент') : i18n.t('Человек'))),
+        h('label', { class: 'field' }, i18n.t('Роль'), role)),
+      account.kind === 'agent' && h('label', { class: 'field' }, i18n.t('Система'), system),
+      h('datalist', { id: 'edit-profile-systems' }, WORLD_AGENTS.map((s) => h('option', { value: s.id }, s.name))), picker?.element);
+    const cancel = h('button', { type: 'button', class: 'ghost', onclick: close }, i18n.t('Отмена'));
+    const save = h('button', { class: 'primary' }, i18n.t('Сохранить'));
+    appendChildren(form, fields, h('div', { class: 'row', style: 'justify-content:flex-end' }, cancel, save));
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (saving) return;
+      saving = true; fields.disabled = true; save.disabled = true; cancel.disabled = true; err.textContent = '';
+      try {
+        await api('PATCH', `/accounts/${account.id}`, { name: name.value, ...(account.id !== state.me.id && { role: role.value }),
+          ...(picker && { system: system.value.trim() || null, ...picker.profilePatch() }) });
+        if (picker) {
+          try { await picker.saveUpload(account.id); }
+          catch (error) { err.textContent = i18n.t`Профиль сохранён, но аватарка не загрузилась. Повторите сохранение. ${error.message}`; await render(); return; }
+        }
+        if (account.id === state.me.id) state.me = await api('GET', '/me');
+        close(); await render(); toast(i18n.t('Профиль сохранён'));
+      } catch (error) { err.textContent = error.message; }
+      finally { saving = false; fields.disabled = false; save.disabled = false; cancel.disabled = false; }
+    });
+  });
+  dlg.classList.add('avatar-dialog');
+  dlg.addEventListener('cancel', (event) => { if (saving) event.preventDefault(); });
+  dlg.addEventListener('close', () => picker?.dispose(), { once: true });
+}
+
+function removeAccount(account) {
+  let saving = false;
+  const dlg = dialog(i18n.t`Удалить профиль ${account.name}?`, (form, { close, err }) => {
+    const cancel = h('button', { type: 'button', class: 'ghost', onclick: close }, i18n.t('Отмена'));
+    const remove = h('button', { class: 'danger' }, i18n.t('Удалить профиль'));
+    appendChildren(form, h('p', { style: 'margin:0' }, i18n.t('Профиль исчезнет из списка. Его ключи и способы входа перестанут работать, все сессии завершатся.')),
+      h('p', { class: 'muted small', style: 'margin:0' }, i18n.t('Задачи, комментарии и учёт времени сохранятся. Удаление нельзя отменить.')),
+      h('div', { class: 'row', style: 'justify-content:flex-end' }, cancel, remove));
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault(); if (saving) return;
+      saving = true; remove.disabled = true; cancel.disabled = true; err.textContent = '';
+      try { await api('DELETE', `/accounts/${account.id}`); close(); await render(); toast(i18n.t('Профиль удалён')); }
+      catch (error) { err.textContent = error.message; }
+      finally { saving = false; remove.disabled = false; cancel.disabled = false; }
+    });
+  });
+  dlg.addEventListener('cancel', (event) => { if (saving) event.preventDefault(); });
+}
+
 async function accountsView() {
   state.accounts = await api('GET', '/accounts');
   const admin = state.me.role === 'admin';
@@ -1956,22 +2153,33 @@ async function accountsView() {
       alert(ex.message);
     }
   };
-  const create = () =>
-    dialog(i18n.t('Новый аккаунт'), (form, { close, err }) => {
-      const name = h('input', { required: true, pattern: '[a-zA-Z0-9][a-zA-Z0-9_.\\-]{0,39}', placeholder: 'claude-backend', autofocus: true });
+  const create = () => {
+    let picker;
+    const dlg = dialog(i18n.t('Новый аккаунт'), (form, { close, err }) => {
+      const name = h('input', { required: true, pattern: '[a-zA-Z0-9][a-zA-Z0-9_.\\-]{0,39}', placeholder: 'claude-backend', autofocus: true, oninput: () => picker.refresh() });
       const kind = h('select', null, h('option', { value: 'agent' }, i18n.t('Агент')), h('option', { value: 'human' }, i18n.t('Человек')));
-      const system = h('input', { placeholder: 'claude, codex…', list: 'systems' });
+      const system = h('input', { placeholder: 'claude, codex, gemini…', list: 'systems', oninput: () => picker.refresh() });
+      picker = agentAvatarPicker(null, () => system.value || name.value);
+      kind.addEventListener('change', () => { picker.element.hidden = kind.value !== 'agent'; });
       const role = h('select', null, h('option', { value: 'member' }, i18n.t('Участник')), h('option', { value: 'admin' }, i18n.t('Администратор')));
       appendChildren(form,
         h('label', { class: 'field' }, i18n.t('Имя (латиница, для @упоминаний)'), name),
         h('div', { class: 'grid-2' }, h('label', { class: 'field' }, i18n.t('Тип'), kind), h('label', { class: 'field' }, i18n.t('Роль'), role)),
-        h('label', { class: 'field' }, i18n.t('Система'), system, h('datalist', { id: 'systems' }, ['claude', 'codex'].map((s) => h('option', { value: s })))),
+        h('label', { class: 'field' }, i18n.t('Система'), system),
+        h('datalist', { id: 'systems' }, WORLD_AGENTS.map((s) => h('option', { value: s.id }, s.name))),
+        picker.element,
         h('div', { class: 'row', style: 'justify-content:flex-end' }, h('button', { type: 'button', class: 'ghost', onclick: close }, i18n.t('Отмена')), h('button', { class: 'primary' }, i18n.t('Создать'))),
       );
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        const submit = form.querySelector('button.primary');
+        submit.disabled = true; picker.element.disabled = true;
         try {
-          const res = await api('POST', '/accounts', { name: name.value, kind: kind.value, role: role.value, ...(system.value.trim() && { system: system.value.trim() }) });
+          const res = await api('POST', '/accounts', { name: name.value, kind: kind.value, role: role.value, ...(system.value.trim() && { system: system.value.trim() }), ...(kind.value === 'agent' && { avatar_preset: picker.value() }) });
+          if (res.account.kind === 'agent') {
+            try { await picker.save(res.account.id); }
+            catch (error) { alert(i18n.t`Аккаунт создан, но аватарка не сохранена. Её можно изменить в списке аккаунтов. ${error.message}`); }
+          }
           close();
           await render();
           if (res.account.kind === 'human') {
@@ -1980,9 +2188,12 @@ async function accountsView() {
           } else showKey(res.account.name, res.key);
         } catch (ex) {
           err.textContent = ex.message;
-        }
+        } finally { submit.disabled = false; picker.element.disabled = false; }
       });
     });
+    dlg.classList.add('avatar-dialog');
+    dlg.addEventListener('close', picker.dispose, { once: true });
+  };
 
   return shell(
     'accounts',
@@ -2010,6 +2221,9 @@ async function accountsView() {
               h(
                 'td',
                 null,
+                h('div', { class: 'account-actions' },
+                admin && h('button', { class: 'ghost', onclick: () => editAccount(a), 'aria-label': i18n.t`Редактировать профиль: ${a.name}` }, i18n.t('Редактировать')),
+                a.kind === 'agent' && !admin && a.id === state.me.id && h('button', { class: 'ghost', onclick: () => editAgentAvatar(a) }, i18n.t('Аватарка')),
                 admin && a.kind === 'human' && !a.disabled && h('button', { class: 'ghost',
                   onclick: () => act(async () => showInvitation(a.name, await api('POST', `/accounts/${a.id}/invitation`))) }, i18n.t('Пригласить')),
                 admin && a.kind === 'human' && h('button',{class:'ghost',onclick:()=>{
@@ -2034,6 +2248,8 @@ async function accountsView() {
                 admin &&
                   a.id !== state.me.id &&
                   h('button', { class: 'ghost', onclick: () => act(() => api('PATCH', `/accounts/${a.id}`, { disabled: !a.disabled })) }, a.disabled ? i18n.t('Включить') : i18n.t('Отключить')),
+                admin && a.id !== state.me.id && h('button', { class: 'ghost danger', onclick: () => removeAccount(a), 'aria-label': i18n.t`Удалить профиль ${a.name}?` }, i18n.t('Удалить')),
+                ),
               ),
             ),
           ),
@@ -2358,23 +2574,55 @@ async function boardView(project, context) {
   let request = 0;
   let snapshot;
 
+  const pending = new Map();
+  const moved = new Set();
+  const showPending = (id) => {
+    const item = columns.querySelector(`[data-task-id="${id}"]`);
+    if (!item) return;
+    const status = pending.get(id);
+    item.classList.toggle('is-saving', !!status);
+    item.setAttribute('aria-busy', String(!!status));
+    item.draggable = !status;
+    item.querySelectorAll('button, select').forEach((control) => { control.disabled = !!status; });
+    const accept = item.querySelector('.board-accept');
+    if (accept) {
+      accept.classList.toggle('is-loading', status === 'done');
+      accept.setAttribute('aria-busy', String(status === 'done'));
+      accept.querySelector('.board-accept-label').textContent = i18n.t(status === 'done' ? 'Принимаем…' : 'Принять');
+    }
+  };
   const move = async (id, status) => {
+    if (pending.has(id)) return;
+    pending.set(id, status);
+    showPending(id);
     err.textContent = '';
     try {
       await api('PATCH', `/tasks/${id}`, { status });
+      moved.add(id);
+      if (status === 'done') toast(i18n.t('Задача принята'));
+      await load();
     } catch (ex) {
       err.textContent = ex.message;
+      // A failed select change must return to the last confirmed status.
+      const item = columns.querySelector(`[data-task-id="${id}"]`);
+      const select = item?.querySelector('select');
+      if (select) select.value = item.dataset.status;
+    } finally {
+      pending.delete(id);
+      showPending(id);
     }
-    await load();
   };
 
   const card = (t) =>
     h(
       'article',
       {
-        class: 'board-card',
+        class: `board-card${moved.has(t.id) ? ' just-moved' : ''}`,
+        'data-task-id': t.id,
+        'data-status': t.status,
         draggable: 'true',
         ondragstart: (e) => {
+          if (pending.has(t.id)) { e.preventDefault(); return; }
           e.dataTransfer.setData('text/plain', String(t.id));
           e.dataTransfer.effectAllowed = 'move';
           e.currentTarget.classList.add('dragging');
@@ -2403,7 +2651,7 @@ async function boardView(project, context) {
       h(
         'div',
         { class: 'board-actions' },
-        t.status === 'review' && h('button', { class: 'primary small', onclick: () => move(t.id, 'done') }, i18n.t('Принять')),
+        t.status === 'review' && h('button', { class: 'primary small board-accept', onclick: () => move(t.id, 'done') }, h('span', { class: 'board-accept-spinner', 'aria-hidden': 'true' }), h('span', { class: 'board-accept-label' }, i18n.t('Принять'))),
         t.status === 'review' && h('button', { class: 'small', onclick: () => (location.hash = `#/tasks/${t.id}`) }, i18n.t('Открыть')),
         h(
           'select',
@@ -2469,6 +2717,8 @@ async function boardView(project, context) {
         );
       }),
     );
+    pending.forEach((_, id) => showPending(id));
+    moved.clear();
   };
   const bind = (key) => ({
     onchange: (e) => {
@@ -2864,11 +3114,12 @@ async function refreshInboxCount() {
 }
 
 function paintInboxCount() {
-  const link = document.querySelector('.nav a[href="#/inbox"]');
-  const badge = link?.querySelector('.badge');
-  if (!state.inboxCount) badge?.remove();
-  else if (badge) badge.textContent = String(state.inboxCount);
-  else link?.append(h('span', { class: 'badge' }, String(state.inboxCount)));
+  for (const link of document.querySelectorAll('.nav a[href="#/inbox"]')) {
+    const badge = link.querySelector('.badge');
+    if (!state.inboxCount) badge?.remove();
+    else if (badge) badge.textContent = String(state.inboxCount);
+    else link.append(h('span', { class: 'badge' }, String(state.inboxCount)));
+  }
 }
 
 async function lockRequest(method, path, body) {

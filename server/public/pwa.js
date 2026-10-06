@@ -2,6 +2,28 @@ import * as i18n from './i18n.js';
 import { classifyClient } from './client-device.js';
 // Platform features of the installed app: passkeys, service worker, push, install, offline outbox.
 
+// Keep the installed app at its layout scale, while allowing one-finger scrolling.
+export function installZoomLock() {
+  const mode = matchMedia('(display-mode: standalone)');
+  const installed = () => mode.matches || navigator.standalone === true;
+  const sync = () => document.documentElement.classList.toggle('pwa-no-zoom', installed());
+  const preventGesture = (event) => {
+    if (installed() && event.cancelable) event.preventDefault();
+  };
+  const preventPinch = (event) => {
+    if (event.touches.length > 1) preventGesture(event);
+  };
+  // WebKit emits gesture events; touch events cover pinch in nested scroll areas too.
+  const options = { passive: false, capture: true };
+  document.addEventListener('gesturestart', preventGesture, options);
+  document.addEventListener('gesturechange', preventGesture, options);
+  document.addEventListener('touchstart', preventPinch, options);
+  document.addEventListener('touchmove', preventPinch, options);
+  mode.addEventListener('change', sync);
+  addEventListener('pageshow', sync);
+  sync();
+}
+
 // ---------- passkeys (WebAuthn) ----------
 
 const toBuffer = (s) =>

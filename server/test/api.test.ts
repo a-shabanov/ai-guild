@@ -278,6 +278,32 @@ test('analytics groups by model and effort', async () => {
   assert.equal(unpriced.totals.unpriced_entries, 1);
 });
 
+test('analytics distinguishes unknown tokens, confirmed zero, and partial totals', async () => {
+  const task = (await api('codex', 'POST', '/api/tasks', { title: 'token coverage', project: 'TokenCoverage', ...codex })).body;
+  const read = async () => (await api('ivan', 'GET', '/api/analytics?group_by=model&project=TokenCoverage')).body;
+  assert.equal((await read()).totals.unknown_tokens_entries, 0);
+  await api('codex', 'POST', `/api/tasks/${task.id}/time`, { seconds: 60, ...codex });
+  let data = await read();
+  assert.equal(data.rows[0].unknown_tokens_entries, 1);
+  for (const field of ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens']) {
+    assert.equal(data.rows[0][field], 0);
+    assert.equal(data.rows[0][`unknown_${field}_entries`], 1);
+  }
+  await api('codex', 'POST', `/api/tasks/${task.id}/time`, {
+    seconds: 60, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, ...codex,
+  });
+  data = await read();
+  assert.equal(data.totals.entries, 2);
+  assert.equal(data.totals.unknown_tokens_entries, 1);
+  await api('codex', 'POST', `/api/tasks/${task.id}/time`, { seconds: 60, input_tokens: 100, ...codex });
+  data = await read();
+  assert.equal(data.totals.input_tokens, 100);
+  assert.equal(data.totals.unknown_input_tokens_entries, 1);
+  assert.equal(data.totals.unknown_output_tokens_entries, 2);
+  assert.equal(data.totals.unknown_tokens_entries, 2);
+  assert.equal(data.rows[0].unknown_tokens_entries, data.totals.unknown_tokens_entries);
+});
+
 test('cookie session works for the web UI', async () => {
   const login = await fetch(url + '/api/session', {
     method: 'POST',
@@ -935,4 +961,74 @@ test('account preferences suppress attachment APNs but allow replies and retain 
   assert.equal(apnsRequests.at(-1)!.body.aps.alert.body, 'reply stays enabled');
   await api('ivan', 'PATCH', '/api/push/preferences', { attachments: true });
   await api('ivan', 'DELETE', '/api/push/apns', { token });
+});
+
+test('admin edits profiles; validation, conflicts and self-protection preserve data', async () => {
+  const created = await api('ivan', 'POST', '/api/accounts', { name: 'editable-profile', kind: 'agent', system: 'codex' });
+  const id = created.body.account.id;
+  keys.editable = created.body.key;
+  const path = `/api/accounts/${id}`;
+  assert.equal((await api('claude', 'PATCH', path, { name: 'forbidden' })).status, 403);
+  assert.equal((await api('ivan', 'PATCH', path, { name: 'bad name' })).status, 400);
+  const edited = await api('ivan', 'PATCH', path, { name: 'renamed-profile', system: 'cursor', role: 'admin', avatar_preset: 'gemini' });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body.id, id);
+  assert.equal(edited.body.name, 'renamed-profile');
+  assert.equal(edited.body.system, 'cursor');
+  assert.equal(edited.body.role, 'admin');
+  assert.equal(edited.body.avatar_preset, 'gemini');
+  assert.equal(edited.body.key_hash, undefined);
+  assert.equal((await api('editable', 'GET', '/api/me')).body.name, 'renamed-profile');
+  assert.equal((await api('ivan', 'PATCH', path, { name: 'CLAUDE', system: 'grok', avatar_preset: 'amp' })).status, 409);
+  const unchanged = (await api('editable', 'GET', '/api/me')).body;
+  assert.equal(unchanged.system, 'cursor');
+  assert.equal(unchanged.avatar_preset, 'gemini');
+  assert.equal((await api('ivan', 'PATCH', path, { system: null })).body.system, null);
+  const me = (await api('ivan', 'GET', '/api/me')).body;
+  assert.equal((await api('ivan', 'PATCH', `/api/accounts/${me.id}`, { role: 'member' })).status, 400);
+  assert.equal((await api('ivan', 'PATCH', `/api/accounts/${me.id}`, { disabled: true })).status, 400);
+  assert.equal((await api('ivan', 'PATCH', '/api/accounts/99999999', { name: 'missing' })).status, 404);
+});
+
+test('removing a profile revokes access, stops timers and retains authored history', async () => {
+  const created = await api('ivan', 'POST', '/api/accounts', { name: 'removed-profile', kind: 'human' });
+  const id = created.body.account.id;
+  const path = `/api/accounts/${id}`;
+  keys.removable = created.body.key;
+  const session = await api('removable', 'POST', '/api/session', { key: keys.removable, native: true });
+  keys.removedSession = session.body.session_token;
+  assert.match(keys.removedSession, /^ats_/);
+  const task = (await api('removable', 'POST', '/api/tasks', { title: 'Retained history', assignee: 'me' })).body;
+  await api('removable', 'POST', `/api/tasks/${task.id}/comments`, { body: 'Keep this comment' });
+  await api('removable', 'POST', `/api/tasks/${task.id}/timer/start`, {});
+  await api('removable', 'POST', `/api/tasks/${task.id}/result`, { result: 'Keep this result' });
+  await api('ivan', 'POST', `${path}/invitation`);
+  await pool.query(`insert into account_identities(account_id,provider,subject,label) values ($1,'google','removed-google','removed@example.test')`, [id]);
+  await pool.query(`insert into push_subscriptions(account_id,endpoint,p256dh,auth) values ($1,'https://push.test/removed','test','test')`, [id]);
+  assert.equal((await api('claude', 'DELETE', path)).status, 403);
+  const me = (await api('ivan', 'GET', '/api/me')).body;
+  assert.equal((await api('ivan', 'DELETE', `/api/accounts/${me.id}`)).status, 400);
+  assert.equal((await api('ivan', 'DELETE', path)).status, 200);
+  assert.equal((await api('ivan', 'GET', '/api/accounts')).body.some((a: any) => a.id === id), false);
+  assert.equal((await api('removable', 'GET', '/api/me')).status, 401);
+  assert.equal((await api('removedSession', 'GET', '/api/me')).status, 401);
+  assert.equal((await api('ivan', 'PATCH', path, { disabled: false })).status, 404);
+  assert.equal((await api('ivan', 'POST', `${path}/rotate-key`)).status, 404);
+  assert.equal((await api('ivan', 'POST', `${path}/invitation`)).status, 404);
+  assert.equal((await api('ivan', 'DELETE', path)).status, 404);
+  assert.equal((await api('ivan', 'DELETE', '/api/accounts/99999999')).status, 404);
+  assert.equal((await api('ivan', 'POST', '/api/tasks', { title: 'Cannot assign removed', assignee: id })).status, 404);
+  const retained = (await api('ivan', 'GET', `/api/tasks/${task.id}`)).body;
+  assert.equal(retained.created_by_name, 'removed-profile');
+  assert.equal(retained.assignee_name, 'removed-profile');
+  assert.equal(retained.result_by_name, 'removed-profile');
+  assert.equal(retained.comments[0].body, 'Keep this comment');
+  assert.equal(retained.comments[0].author_name, 'removed-profile');
+  assert.equal(retained.time_logs[0].account_name, 'removed-profile');
+  assert.ok(retained.time_logs[0].ended_at);
+  assert.ok(retained.time_logs[0].seconds >= 1);
+  assert.ok(retained.events.length);
+  for (const table of ['sessions', 'account_identities', 'account_invitations', 'push_subscriptions']) {
+    assert.equal((await pool.query(`select count(*)::int as n from ${table} where account_id=$1`, [id])).rows[0].n, 0);
+  }
 });

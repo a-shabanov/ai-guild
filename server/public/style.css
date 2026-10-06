@@ -11,6 +11,7 @@
 .notification-choice input { width: 22px; height: 22px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
 .notification-choices > p { padding-top: 12px; }
 html.pwa-refresh, html.pwa-refresh body { overscroll-behavior-y: none; }
+html.pwa-no-zoom { touch-action: pan-x pan-y; }
 .pull-refresh {
   position: fixed;
   left: 50%;
@@ -424,6 +425,21 @@ label.field {
   height: 100%;
   object-fit: contain;
 }
+
+.avatar-dialog { width: min(640px, calc(100vw - 32px)); }
+.profile-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.account-actions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 210px; max-width: 360px; }
+button.danger { color: var(--critical); }
+.agent-avatar-picker { border: 0; padding: 0; min-width: 0; }
+.agent-avatar-picker[hidden] { display: none; }
+.agent-avatar-picker legend { font-weight: 600; margin-bottom: 12px; }
+.avatar-preview { display: flex; align-items: center; gap: 12px; }
+.avatar-preview .avatar { width: 64px; height: 64px; font-size: 20px; }
+.avatar-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(82px, 1fr)); gap: 8px; max-height: 300px; overflow-y: auto; padding: 3px; }
+.avatar-choice { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px 4px; white-space: normal; font-size: 12px; line-height: 1.3; }
+.avatar-choice img { width: 48px; height: 48px; object-fit: contain; }
+.avatar-choice[aria-pressed='true'] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--surface-2); }
+.agent-avatar-picker input[type='file'] { width: 100%; box-sizing: border-box; }
 
 /* ---- task list ---- */
 .filters {
@@ -1118,6 +1134,20 @@ a.button:hover {
 .board-card:hover {
   border-color: var(--axis);
 }
+/* Feedback stays attached to the task while polling redraws the board. */
+.board-card.is-saving { border-color: var(--accent); cursor: progress; }
+.board-accept { display: inline-flex; align-items: center; gap: 6px; transition: transform 120ms ease, filter 120ms ease; }
+.board-accept:active:not(:disabled) { transform: scale(0.95); }
+.board-accept.is-loading { opacity: 0.85; cursor: progress; }
+.board-accept-spinner { display: none; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; }
+.board-accept.is-loading .board-accept-spinner { display: inline-block; animation: refresh-spin 700ms linear infinite; }
+.board-card.just-moved { animation: board-arrive 320ms ease-out; }
+@keyframes board-arrive { from { opacity: 0.45; transform: translateY(8px); border-color: var(--accent); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .board-accept { transition: none; }
+  .board-accept:active:not(:disabled) { transform: none; }
+  .board-accept.is-loading .board-accept-spinner, .board-card.just-moved { animation: none; }
+}
 .board-card.dragging {
   opacity: 0.4;
 }
@@ -1578,7 +1608,7 @@ button.big {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
-.mobile-only, .nav a.mobile-only, .tab-icon {
+.mobile-tabs, .mobile-only, .nav a.mobile-only, .tab-icon {
   display: none;
 }
 .task-modes {
@@ -1608,7 +1638,11 @@ button.big {
   .mobile-only {
     display: block;
   }
-  .topbar .nav {
+  .desktop-tabs {
+    display: none;
+  }
+  .mobile-tabs {
+    display: flex;
     position: fixed;
     left: 0;
     right: 0;
@@ -1619,15 +1653,15 @@ button.big {
     background: var(--surface);
     border-top: 1px solid var(--border);
   }
-  .topbar .nav a.mobile-only, .task-modes.mobile-only {
+  .mobile-tabs a.mobile-only, .task-modes.mobile-only {
     display: flex;
   }
-  .topbar .nav .tab-icon {
+  .mobile-tabs .tab-icon {
     display: block;
     width: 24px;
     height: 24px;
   }
-  .topbar .nav a {
+  .mobile-tabs a {
     position: relative;
     flex-direction: column;
     gap: 4px;
@@ -1639,12 +1673,12 @@ button.big {
     font-size: 10px;
     line-height: 1.2;
   }
-  .topbar .nav a.mobile-active {
+  .mobile-tabs a.mobile-active {
     color: var(--text);
     background: var(--surface-2);
     font-weight: 600;
   }
-  .topbar .nav .badge {
+  .mobile-tabs .badge {
     position: absolute;
     top: 2px;
     left: calc(50% + 6px);

@@ -14,6 +14,7 @@ import { HttpError } from './errors.ts';
 import { generateKey, hashKey, requireAdmin, type Actor } from './auth.ts';
 import { notifyEvent } from './push.ts';
 import * as S from './schemas.ts';
+import { validatePreset, removeAvatar } from './account-avatars.ts';
 
 const attachmentsDir = join(config.dataDir, 'attachments');
 
@@ -29,7 +30,7 @@ async function resolveAccount(ref: string | number, actor?: Actor): Promise<Row>
   if (ref === 'me' && actor) return { id: actor.id, name: actor.name };
   const byId = typeof ref === 'number' || /^\d+$/.test(ref);
   const row = await q1(
-    `select id, name, disabled from accounts where ${byId ? 'id = $1' : 'lower(name) = lower($1)'}`,
+    `select id, name, disabled from accounts where deleted_at is null and ${byId ? 'id = $1' : 'lower(name) = lower($1)'}`,
     [ref],
   );
   if (!row) throw new HttpError(404, `account "${ref}" not found`);
@@ -71,7 +72,8 @@ const TASK_SELECT = `
     left join accounts rec on rec.id = t.recorded_by`;
 
 const ACCOUNT_COLS =
-  'id, name, kind, system, role, key_prefix, disabled, created_at, last_seen_at';
+  `id, name, kind, system, role, key_prefix, disabled, created_at, last_seen_at, avatar_preset,
+   case when avatar_key is not null then '/api/accounts/' || id || '/avatar?v=' || avatar_key else null end as avatar_url`;
 
 function attachmentRow(row: Row): Row {
   const { storage_key, ...rest } = row;
@@ -141,12 +143,14 @@ export async function createAccount(
   actor?: Actor,
 ): Promise<{ account: Row; key: string }> {
   if (actor) requireAdmin(actor);
+  await validatePreset(input.avatar_preset);
+  if (input.kind !== 'agent' && input.avatar_preset != null) throw new HttpError(400, 'avatar selection is for agents');
   const key = generateKey();
   try {
     const account = await q1(
-      `insert into accounts(name, kind, system, role, key_hash, key_prefix)
-       values ($1, $2, $3, $4, $5, $6) returning ${ACCOUNT_COLS}`,
-      [input.name, input.kind, input.system ?? null, input.role, hashKey(key), key.slice(0, 8)],
+      `insert into accounts(name, kind, system, role, key_hash, key_prefix, avatar_preset)
+       values ($1, $2, $3, $4, $5, $6, $7) returning ${ACCOUNT_COLS}`,
+      [input.name, input.kind, input.system ?? null, input.role, hashKey(key), key.slice(0, 8), input.avatar_preset ?? null],
     );
     return { account: account!, key };
   } catch (err: any) {
@@ -156,7 +160,7 @@ export async function createAccount(
 }
 
 export async function listAccounts(): Promise<Row[]> {
-  return q(`select ${ACCOUNT_COLS} from accounts order by kind, name`);
+  return q(`select ${ACCOUNT_COLS} from accounts where deleted_at is null order by kind, name`);
 }
 
 export async function updateAccount(
@@ -165,26 +169,76 @@ export async function updateAccount(
   input: z.infer<typeof S.UpdateAccount>,
 ): Promise<Row> {
   requireAdmin(actor);
+  await validatePreset(input.avatar_preset);
   if (id === actor.id && (input.disabled || input.role === 'member')) {
     throw new HttpError(400, 'you cannot disable or demote your own account');
   }
-  const row = await q1(
-    `update accounts set
-       disabled = coalesce($2, disabled),
-       role = coalesce($3, role),
-       system = case when $4::boolean then $5 else system end
-     where id = $1 returning ${ACCOUNT_COLS}`,
-    [id, input.disabled ?? null, input.role ?? null, input.system !== undefined, input.system ?? null],
-  );
-  if (!row) throw new HttpError(404, `account ${id} not found`);
+  const client = await pool.connect();
+  let previousAvatar: string | null = null;
+  let row: Row;
+  try {
+    await client.query('begin');
+    const account = (await client.query('select kind, avatar_key from accounts where id=$1 and deleted_at is null for update', [id])).rows[0];
+    if (!account) throw new HttpError(404, `account ${id} not found`);
+    if (input.avatar_preset !== undefined && account.kind !== 'agent') throw new HttpError(400, 'avatar selection is for agents');
+    if (input.avatar_preset !== undefined) previousAvatar = account.avatar_key;
+    row = (await client.query(
+      `update accounts set
+         name = coalesce($2, name),
+         disabled = coalesce($3, disabled),
+         role = coalesce($4, role),
+         system = case when $5::boolean then $6 else system end,
+         avatar_preset = case when $7::boolean then $8 else avatar_preset end,
+         avatar_key = case when $7::boolean then null else avatar_key end,
+         avatar_mime = case when $7::boolean then null else avatar_mime end
+       where id = $1 returning ${ACCOUNT_COLS}`,
+      [id, input.name ?? null, input.disabled ?? null, input.role ?? null, input.system !== undefined,
+        input.system ?? null, input.avatar_preset !== undefined, input.avatar_preset ?? null],
+    )).rows[0];
+    await client.query('commit');
+  } catch (err: any) {
+    await client.query('rollback');
+    if (err.code === '23505') throw new HttpError(409, `account "${input.name}" already exists`);
+    throw err;
+  } finally {
+    client.release();
+  }
+  await removeAvatar(previousAvatar);
   return row;
+}
+
+export async function deleteAccount(actor: Actor, id: number): Promise<void> {
+  requireAdmin(actor);
+  if (id === actor.id) throw new HttpError(400, 'you cannot delete your own account');
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const account = (await client.query('select id from accounts where id=$1 and deleted_at is null for update', [id])).rows[0];
+    if (!account) throw new HttpError(404, `account ${id} not found`);
+    await client.query('update accounts set deleted_at=now(), disabled=true, key_hash=$2 where id=$1', [id, hashKey(generateKey())]);
+    // Credentials and notifications are disposable; authored work keeps its account reference.
+    for (const table of ['sessions', 'auth_flows', 'auth_exchanges', 'account_invitations',
+      'two_factor_codes', 'two_factor_logins', 'account_second_factors', 'passkeys',
+      'account_identities', 'push_subscriptions', 'apns_devices', 'account_devices']) {
+      await client.query(`delete from ${table} where account_id=$1`, [id]);
+    }
+    await client.query(`update time_logs set ended_at=now(),
+      seconds=greatest(1, floor(extract(epoch from (now()-started_at))))
+      where account_id=$1 and ended_at is null`, [id]);
+    await client.query('commit');
+  } catch (err) {
+    await client.query('rollback');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function rotateKey(actor: Actor, id: number): Promise<{ account: Row; key: string }> {
   if (id !== actor.id) requireAdmin(actor);
   const key = generateKey();
   const account = await q1(
-    `update accounts set key_hash = $2, key_prefix = $3 where id = $1 returning ${ACCOUNT_COLS}`,
+    `update accounts set key_hash = $2, key_prefix = $3 where id = $1 and deleted_at is null returning ${ACCOUNT_COLS}`,
     [id, hashKey(key), key.slice(0, 8)],
   );
   if (!account) throw new HttpError(404, `account ${id} not found`);
@@ -923,6 +977,11 @@ const AGG = `coalesce(sum(l.seconds), 0) as seconds,
              coalesce(sum(l.output_tokens), 0) as output_tokens,
              coalesce(sum(l.cache_read_tokens), 0) as cache_read_tokens,
              coalesce(sum(l.cache_write_tokens), 0) as cache_write_tokens,
+             count(*) filter (where l.input_tokens is null) as unknown_input_tokens_entries,
+             count(*) filter (where l.output_tokens is null) as unknown_output_tokens_entries,
+             count(*) filter (where l.cache_read_tokens is null) as unknown_cache_read_tokens_entries,
+             count(*) filter (where l.cache_write_tokens is null) as unknown_cache_write_tokens_entries,
+             count(*) filter (where l.input_tokens is null or l.output_tokens is null) as unknown_tokens_entries,
              count(*) - count(l.cost_usd) as unpriced_entries,
              coalesce(sum(l.cost_usd), 0) as cost_usd`;
 
