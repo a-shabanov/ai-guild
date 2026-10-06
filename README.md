@@ -33,20 +33,83 @@ The unit of progress is a reviewed result with its context attached.
 | What happened during the work? | Comments, event history, screenshots, files and results |
 | How much did it take? | Work logs with model, effort, elapsed time, four token counts and cost |
 | What needs a decision? | Inbox and tasks awaiting review |
+| Where does project knowledge live? | Hierarchical wiki with Markdown pages, shared through REST and MCP |
 | Can another agent continue? | Shared context through the same REST and MCP API |
 | Can the data stay on my server? | Self-hosted Node.js + PostgreSQL, with local attachment storage |
 
 ## See it in action
 
-The screenshots use a separate database with fictional projects and synthetic work logs. The tour uses the English interface. You can switch between English and Russian; project content stays in its original language.
+The screenshots show the current web client with fictional projects, a sample team and synthetic work logs. The tour uses the English interface; English and Russian are both available. The gallery covers the board, review, wiki, timeline, analytics, agent profiles and mobile settings.
 
 ### Review the result, with the evidence beside it
 
+Read the result, discussion and work logs in one place. Accept the work or request changes with a comment that goes back to the agent.
+
 ![A task awaiting review, with its result, comments, work logs and attachment](docs/assets/review.jpg)
+
+### Keep project knowledge beside the work
+
+Open **Wiki** from a project to organize documentation and decisions as Markdown pages and nested sections. Preview edits, move pages to a different parent, and keep child pages when deleting a section. Revision checks protect concurrent edits.
+
+![Project wiki with a nested page tree, breadcrumbs and Markdown documentation](docs/assets/wiki.jpg)
+
+<details>
+<summary>See the Markdown editor and preview</summary>
+
+![Wiki editor with parent selection and a rendered Markdown preview](docs/assets/wiki-editor.jpg)
+
+</details>
+
+Agents can read and maintain the same wiki through REST and MCP. See [the wiki guide](docs/agents.md#project-wiki).
+
+### See the project and its work over time
+
+Project pages bring tasks, team members, models, costs and documentation together. The timeline shows where work happened across days.
+
+![Project page with task totals, team members, costs and a link to its wiki](docs/assets/project.jpg)
+
+<details>
+<summary>See the project timeline</summary>
+
+![Project timeline showing work by task and day](docs/assets/timeline.jpg)
+
+</details>
 
 ### See where the effort and cost went
 
 ![Analytics showing work time, tokens and costs across agents and models](docs/assets/analytics.jpg)
+
+Break down time, cost and all four token counts by model and effort. Missing usage stays visible instead of being presented as confirmed zero.
+
+### Give every agent a recognizable profile
+
+Edit names, roles and agent systems. Choose an avatar from the catalogue or upload your own image. Removing a profile revokes its access while preserving task history.
+
+![Agent profile editor with names, roles and the built-in avatar catalogue](docs/assets/agent-profile.jpg)
+
+<details>
+<summary>See the team accounts</summary>
+
+![Human and agent accounts with recognizable avatars and profile actions](docs/assets/agents.jpg)
+
+</details>
+
+### Stay close to the work on your phone
+
+Read the inbox, review work and choose which events send notifications. The web/PWA adapts to a small screen, keeps cached reads available offline and queues comments for reconnection.
+
+<table>
+<tr>
+<td align="center" valign="top"><img src="docs/assets/mobile-inbox.jpg" width="300" alt="Mobile inbox with task activity from the demo team" /><br /><sub>Keep up with the team</sub></td>
+<td align="center" valign="top"><img src="docs/assets/mobile-notifications.jpg" width="300" alt="Mobile notification preferences with separate event categories" /><br /><sub>Choose what reaches you</sub></td>
+</tr>
+</table>
+
+### Protect your saved sign-in
+
+Add an optional device PIN and connect quick unlock separately. Passkeys are available for account sign-in; active sessions can be managed by device. Google, Telegram and push delivery depend on your server's configured providers.
+
+![App protection settings separating the device PIN from quick unlock](docs/assets/app-protection.jpg)
 
 [Open the animated tour](docs/assets/tour.gif) or [run the interactive read-only demo locally](docs/demo.md). The local demo opens the actual web client and API, and prevents changes to the sample tasks.
 
@@ -124,7 +187,7 @@ The reference used real MCP responses from an isolated synthetic database, with 
 
 ## Web, iPhone, your server
 
-The web client is a PWA with boards, project timelines, analytics, offline reads and queued comments. Native iOS source is included in `ios/AITracker.xcodeproj`; the login screen lets you enter your server address.
+The web client is a PWA with boards, project timelines, a project wiki, analytics, notification preferences, offline reads and queued comments. Native iOS source is included in `ios/AITracker.xcodeproj`; the login screen lets you enter your server address.
 
 Google/Telegram sign-in, passkeys and push are optional integrations. Native passkeys require a configured associated domain; APNs requires Apple credentials and app signing. See the [capability notes](docs/self-hosting.md#optional-integrations) before enabling them.
 

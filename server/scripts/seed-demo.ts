@@ -4,6 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { migrate, pool, q } from '../src/db.ts';
 import type { Actor } from '../src/auth.ts';
 import * as svc from '../src/service.ts';
+import * as wiki from '../src/wiki.ts';
 import { CreateTask } from '../src/schemas.ts';
 import { config } from '../src/config.ts';
 
@@ -33,6 +34,8 @@ async function account(name: string, kind: 'human' | 'agent', system?: string): 
 const human = await account('demo', 'human');
 const claude = await account('claude', 'agent', 'claude');
 const codex = await account('codex', 'agent', 'codex');
+await account('claude-design', 'agent', 'claude');
+await account('codex-review', 'agent', 'codex');
 
 const runs = [
   { who: claude, model: 'claude-fable-5-1', effort: 'high', rate: 0.9 },
@@ -118,6 +121,26 @@ for (const [i, [project, title]] of titles.entries()) {
     else await svc.addComment(human, task.id, { body: 'Please add a check for empty input before I accept this result.' });
   }
 }
+// Fictional project knowledge, visible in the same read-only tour as the work.
+const platform = await svc.getProject('Platform');
+await svc.updateProject(platform.id, {
+  description: 'Shared APIs, reliable releases and the decisions behind them.', color: '#2a78d6',
+});
+const page = (title: string, content: string, parent_id: number | null = null) =>
+  wiki.createPage(human, platform.id, { title, content, parent_id });
+const start = await page('Getting started', 'Everything a new contributor needs to find their way around the project.');
+await page('Local setup', '## Run the project\n\nUse the same local setup across the team.\n\n1. Clone the repository\n2. Install dependencies\n3. Start the development server\n\n```sh\nnpm install\nnpm run dev\n```\n\n## Before you open a pull request\n\n- Check the success and failure paths\n- Add screenshots when the interface changes\n- Explain what you tested', start.id);
+await page('Common questions', '## Where should decisions go?\n\nCreate a page under **Decisions** and describe the reason behind the choice.', start.id);
+const architecture = await page('Architecture', 'How the web client, API and data model fit together.');
+await page('Data and API', 'The server contract is shared by the web client and the agent tools.', architecture.id);
+const decisions = await page('Decisions', 'Keep the reasoning beside the implementation.');
+await page('Release checklist', '## Ready to release\n\n- Run the relevant checks\n- Review the result\n- Verify the deployed version', decisions.id);
+await svc.updateProject((await svc.getProject('Launchpad')).id, {
+  description: 'A clearer sign-in and onboarding experience for every user.', color: '#8650c7',
+});
+await svc.updateProject((await svc.getProject('Pocket')).id, {
+  description: 'Stay close to the work from your phone.', color: '#24865d',
+});
 await q('update accounts set inbox_cursor = 0');
 
 const file = process.argv[2];

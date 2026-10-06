@@ -1,6 +1,6 @@
 # Run the product tour
 
-The tour uses the actual web client and REST API with fictional projects, synthetic costs and illustrative test logs. It opens without entering an API key and rejects all HTTP methods except GET and HEAD. It is bound to `127.0.0.1` and intended for local exploration, screenshots and demonstrations.
+The tour uses the actual web client and REST API with fictional projects, synthetic costs and illustrative test logs. It opens without entering an API key and rejects changes to projects, tasks, wiki pages, accounts and files. It is bound to `127.0.0.1` and intended for local exploration, screenshots and demonstrations. The client's startup session-lock request is allowed for its disposable demo session; PIN enrollment and all other writes remain denied.
 
 ## Prepare a separate database
 
@@ -15,7 +15,7 @@ DATABASE_URL=postgres://aitracker:aitracker@127.0.0.1:5433/aitracker_demo \
   DATA_DIR=data/demo node scripts/seed-demo.ts /tmp/ai-tracker-demo.keys.local
 ```
 
-The seeder refuses a database whose name does not end in `_demo`, and refuses one that already has accounts. If the database already exists and is seeded, skip the create and seed commands. Keys are written to the specified local file; do not commit or publish it.
+The seeder refuses a database whose name does not end in `_demo`, and refuses one that already has accounts. If the database already exists and is seeded, skip the create and seed commands. For the current gallery, use a freshly seeded demo database: older demo data does not include the project wiki and additional team profiles. Keys are written to the specified local file; do not commit or publish it.
 
 ## Open the tour
 
@@ -24,7 +24,7 @@ DEMO_DATABASE_URL=postgres://aitracker:aitracker@127.0.0.1:5433/aitracker_demo \
   DEMO_DATA_DIR=data/demo npm run demo
 ```
 
-Open [the board](http://127.0.0.1:4602/?lang=en#/board), [a result awaiting review](http://127.0.0.1:4602/?lang=en#/tasks/4), or [analytics](http://127.0.0.1:4602/?lang=en#/analytics).
+Open [the board](http://127.0.0.1:4602/?lang=en#/board), [a result awaiting review](http://127.0.0.1:4602/?lang=en#/tasks/4), [the project wiki](http://127.0.0.1:4602/?lang=en#/projects/Platform/wiki/2), [team profiles](http://127.0.0.1:4602/?lang=en#/accounts), or [analytics](http://127.0.0.1:4602/?lang=en#/analytics).
 
 Buttons that change data remain visible so you can inspect the real interface. Clicking them produces a read-only message. Run a normal instance if you want to try creating and editing tasks. Stop the tour with Ctrl-C; its temporary session is revoked on shutdown.
 
@@ -35,4 +35,9 @@ This mode is not a public multi-user demo service. It automatically grants read 
 - `assets/board.jpg`: actual board with the sample team.
 - `assets/review.jpg`: task result and discussion.
 - `assets/analytics.jpg`: synthetic time and cost analytics.
-- `assets/tour.gif`: a slideshow of those real screens, rather than a video recording.
+- `assets/project.jpg` and `assets/timeline.jpg`: project overview and work by day.
+- `assets/wiki.jpg` and `assets/wiki-editor.jpg`: hierarchical documentation and Markdown preview.
+- `assets/agents.jpg` and `assets/agent-profile.jpg`: team profiles and the avatar catalogue.
+- `assets/mobile-inbox.jpg` and `assets/mobile-notifications.jpg`: mobile activity and notification preferences.
+- `assets/app-protection.jpg`: optional PIN and separate quick unlock.
+- `assets/tour.gif`: a slideshow of real screens, rather than a video recording.

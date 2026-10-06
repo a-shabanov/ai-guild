@@ -11,8 +11,9 @@ process.env.PORT ??= '4602';
 process.env.PUBLIC_URL = `http://127.0.0.1:${process.env.PORT}`;
 process.env.DATA_DIR = resolve(process.env.DEMO_DATA_DIR ?? 'data/showcase');
 
-const [{ default: express }, { buildApp }, { q1, pool }, { createSession, destroySession }] = await Promise.all([
+const [{ default: express }, { buildApp }, { q1, pool }, { createSession, destroySession, authenticate }, { skipSetup, lock }] = await Promise.all([
   import('express'), import('../src/server.ts'), import('../src/db.ts'), import('../src/auth.ts'),
+  import('../src/app-lock.ts'),
 ]);
 const account = await q1("select id from accounts where name = 'demo' and kind = 'human' and not disabled");
 if (!account) {
@@ -20,9 +21,18 @@ if (!account) {
   throw new Error('Seed the dedicated demo database with scripts/seed-demo.ts first');
 }
 const token = await createSession(account.id, 'key', 'local read-only demo');
+// The tour has no write access, so dismiss the optional PIN setup before serving it.
+const actor = await authenticate(token);
+await skipSetup(actor, token);
 const app = express();
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  // Boot relocks its saved session even without a PIN. This disposable session
+  // action is allowed; all project, task and account writes remain denied.
+  if (req.method === 'POST' && req.path === '/api/app-lock/lock') {
+    res.json(await lock(actor, token));
+    return;
+  }
   if ((req.method !== 'GET' && req.method !== 'HEAD') || req.path.startsWith('/api/auth/') || req.path === '/mcp') {
     res.status(403).json({ error: 'This tour is read-only. Run your own instance to create or change tasks.' });
     return;
