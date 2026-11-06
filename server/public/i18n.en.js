@@ -280,6 +280,7 @@ export default {
   "Что доделать? Агент увидит это в своих входящих.": "What needs to change? The agent will see this in its inbox.",
   "Вернуть в работу": "Request changes",
   "Изменить": "Edit",
+  "Редактировать": "Edit",
   "Без описания": "No description",
   "Результат": "Result",
   "Состоит из": "Child tasks",

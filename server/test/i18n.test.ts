@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
 import english from '../public/i18n.en.js';
 import { chooseLocale, translate } from '../public/i18n.js';
 
@@ -23,4 +24,17 @@ test('English translations preserve interpolation slots and contain no Russian i
     assert.deepEqual(slots(value), slots(key), key);
     assert.doesNotMatch(value, /[А-Яа-яЁё]/, key);
   }
+});
+
+test('every Russian literal passed to i18n.t has an English translation', () => {
+  const dir = new URL('../public/', import.meta.url);
+  const missing: string[] = [];
+  for (const file of readdirSync(dir).filter(f => f.endsWith('.js') && !f.startsWith('i18n'))) {
+    const source = readFileSync(new URL(file, dir), 'utf8');
+    for (const [, single, double] of source.matchAll(/\bi18n\.t\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")\s*\)/g)) {
+      const key = (single ?? double).replace(/\\(['"])/g, '$1');
+      if (/[А-Яа-яЁё]/.test(key) && !(key in english)) missing.push(`${file}: ${key}`);
+    }
+  }
+  assert.deepEqual(missing, []);
 });
