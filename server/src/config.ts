@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { currentScope } from './scope.ts';
 
 const root = resolve(import.meta.dirname, '..');
 // Shared with the iOS app; changed by scripts/version.mjs.
@@ -12,6 +13,15 @@ const port = Number(process.env.PORT ?? 4600);
 const origins = (process.env.WEBAUTHN_ORIGINS ?? process.env.PUBLIC_URL ?? `http://localhost:${port}`)
   .split(',')
   .map((o) => new URL(o.trim()).origin);
+const baseWebauthn = {
+  origins,
+  rpId: process.env.WEBAUTHN_RP_ID ?? new URL(origins[0]!).hostname,
+  rpName: 'AI Guild',
+};
+const baseDataDir = resolve(process.env.DATA_DIR ?? resolve(root, 'data'));
+const baseMaxUploadBytes = Number(process.env.MAX_UPLOAD_BYTES ?? 2 * 1024 ** 3);
+let basePublicUrl = process.env.PUBLIC_URL ?? `http://127.0.0.1:${port}`;
+const optionalNumber = (value: string | undefined) => (value ? Number(value) : undefined);
 
 export const config = {
   version: release.version,
@@ -20,16 +30,38 @@ export const config = {
   host: process.env.HOST ?? '127.0.0.1',
   databaseUrl:
     process.env.DATABASE_URL ?? 'postgres://aitracker:aitracker@127.0.0.1:5433/aitracker',
-  dataDir: resolve(process.env.DATA_DIR ?? resolve(root, 'data')),
+  db: {
+    /** The pg default of 10 unless set. */
+    poolMax: optionalNumber(process.env.DB_POOL_MAX),
+    /** Connections are replaced after this long; none by default. */
+    maxLifetimeSeconds: optionalNumber(process.env.DB_MAX_LIFETIME_SECONDS),
+    /** Connections start with an empty search_path and take their schema from the scope. */
+    scoped: process.env.DB_SCOPED === '1',
+    /** With DB_SCOPED: the schema for work outside any scope. Without one, such SQL fails. */
+    schema: process.env.DB_SCHEMA ?? '',
+    /** With DB_SCOPED: how many pool connections one schema may hold; no limit by default. */
+    maxPerSchema: optionalNumber(process.env.DB_MAX_CONNECTIONS_PER_SCHEMA),
+  },
+  // These four follow the scope of the current request; see scope.ts.
+  get dataDir() {
+    return currentScope()?.dataDir ?? baseDataDir;
+  },
   publicDir: resolve(root, 'public'),
   migrationsDir: resolve(root, 'migrations'),
-  maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES ?? 2 * 1024 ** 3),
+  get maxUploadBytes() {
+    return currentScope()?.maxUploadBytes ?? baseMaxUploadBytes;
+  },
   // Public base URL agents see in upload hints returned by MCP tools.
-  publicUrl: process.env.PUBLIC_URL ?? `http://127.0.0.1:${port}`,
-  webauthn: {
-    origins,
-    rpId: process.env.WEBAUTHN_RP_ID ?? new URL(origins[0]!).hostname,
-    rpName: 'AI Guild',
+  get publicUrl() {
+    return currentScope()?.publicUrl ?? basePublicUrl;
+  },
+  set publicUrl(url: string) {
+    basePublicUrl = url;
+  },
+  get webauthn() {
+    const url = currentScope()?.publicUrl;
+    if (!url) return baseWebauthn;
+    return { ...baseWebauthn, origins: [new URL(url).origin], rpId: new URL(url).hostname };
   },
   sessionDays: Number(process.env.SESSION_DAYS ?? 90),
   twoFactor: {

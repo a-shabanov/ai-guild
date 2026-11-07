@@ -76,8 +76,9 @@ async function sendCode(channel: Channel, destination: string, code: string) {
   try { await delivery[channel](destination,code); }
   catch { throw new HttpError(502,channel==='telegram' ? 'Не удалось отправить код в Telegram. Проверьте номер и повторите позже.' : 'Не удалось отправить письмо. Повторите позже.'); }
 }
-async function methods(accountId: number) {
-  const rows = await q('select channel,destination from account_second_factors where account_id=$1 order by channel',[accountId]);
+// Inside a transaction pass its client: asking the pool for a second connection while holding one can deadlock.
+async function methods(accountId: number, db: Pick<PoolClient,'query'> = pool) {
+  const { rows } = await db.query('select channel,destination from account_second_factors where account_id=$1 order by channel',[accountId]);
   return rows.map(row=>({ channel:row.channel as Channel, masked:masked(row.channel,row.destination), available:available()[row.channel as Channel] }));
 }
 export async function settings(actor: Actor) {
@@ -95,7 +96,7 @@ export async function beginLogin(actor: Actor, method: SessionMethod, identityId
     await client.query(`delete from two_factor_logins where token_hash in (select token_hash from two_factor_logins where account_id=$1 order by expires_at desc offset 9)`,[actor.id]);
     const row=await client.query(`insert into two_factor_logins(token_hash,account_id,method,identity_id,passkey_id,key_hash)
       values($1,$2,$3,$4,$5,$6) returning expires_at`,[hashKey(token),actor.id,method,identityId??null,actor.passkeyId??null,method==='key'&&key?hashKey(key):null]);
-    return { two_factor_required:true, challenge_token:token, methods:await methods(actor.id), expires_at:row.rows[0].expires_at };
+    return { two_factor_required:true, challenge_token:token, methods:await methods(actor.id,client), expires_at:row.rows[0].expires_at };
   });
 }
 async function login(client: PoolClient, token: string): Promise<Row> {
@@ -107,7 +108,7 @@ async function login(client: PoolClient, token: string): Promise<Row> {
 }
 export async function pending(token: string) {
   return transaction(async client=>{const row=await login(client,token); await lock(client,row.account_id);
-    return {two_factor_required:true,methods:await methods(row.account_id),expires_at:row.expires_at};});
+    return {two_factor_required:true,methods:await methods(row.account_id,client),expires_at:row.expires_at};});
 }
 export async function cancel(token:string) { await q('delete from two_factor_logins where token_hash=$1',[hashKey(token)]); return {ok:true}; }
 export async function sendLogin(token: string, channel: Channel) {

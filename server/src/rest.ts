@@ -556,10 +556,11 @@ export function restRouter(): Router {
     res.write(': connected\n\n');
     const tell = (id: number) => res.write(`data: ${id}\n\n`);
     const beat = setInterval(() => res.write(': beat\n\n'), 25_000);
-    svc.news.on('event', tell);
+    const channel = svc.newsChannel();
+    svc.news.on(channel, tell);
     req.on('close', () => {
       clearInterval(beat);
-      svc.news.off('event', tell);
+      svc.news.off(channel, tell);
     });
   });
   r.get('/inbox', async (req, res) => {

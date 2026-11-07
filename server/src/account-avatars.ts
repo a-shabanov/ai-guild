@@ -8,7 +8,7 @@ import { HttpError } from './errors.ts';
 import { CATALOG_AVATAR_IDS } from './world-agents.ts';
 
 export const AVATAR_LIMIT = 5 * 1024 * 1024;
-const directory = join(config.dataDir, 'avatars');
+const directory = () => join(config.dataDir, 'avatars');
 
 export function validateAvatarPreset(preset: string | null | undefined, kind: string): void {
   if (preset != null && (kind !== 'agent' || !CATALOG_AVATAR_IDS.has(preset))) {
@@ -17,7 +17,7 @@ export function validateAvatarPreset(preset: string | null | undefined, kind: st
 }
 
 export async function removeAvatar(key: string | null): Promise<void> {
-  if (key) await rm(join(directory, key), { force: true }).catch(() => {});
+  if (key) await rm(join(directory(), key), { force: true }).catch(() => {});
 }
 
 // Identify raster content ourselves; a filename or caller-supplied MIME is not trusted.
@@ -46,8 +46,8 @@ export async function setAccountAvatar(actor: Actor, id: number, data: Buffer): 
     if (!account) throw new HttpError(404, 'account not found');
     if (account.kind !== 'agent') throw new HttpError(400, 'avatar uploads are for agents');
     previous = account.avatar_key;
-    await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, key), data, { flag: 'wx' });
+    await mkdir(directory(), { recursive: true });
+    await writeFile(join(directory(), key), data, { flag: 'wx' });
     await client.query('update accounts set avatar_key = $2, avatar_mime = $3, avatar_preset = null where id = $1', [id, key, mime]);
     await client.query('commit');
   } catch (error) {
@@ -63,7 +63,7 @@ export async function setAccountAvatar(actor: Actor, id: number, data: Buffer): 
 export async function getAccountAvatar(id: number, version?: string): Promise<{ path: string; mime: string }> {
   const row = await q1('select avatar_key, avatar_mime from accounts where id = $1', [id]);
   if (!row?.avatar_key || (version !== undefined && version !== row.avatar_key)) throw new HttpError(404, 'avatar not found');
-  return { path: join(directory, row.avatar_key), mime: row.avatar_mime };
+  return { path: join(directory(), row.avatar_key), mime: row.avatar_mime };
 }
 
 export async function authorizeAvatar(actor: Actor, id: number): Promise<void> {

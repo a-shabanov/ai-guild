@@ -10,24 +10,26 @@ import type { Actor } from './auth.ts';
 import { config } from './config.ts';
 import { q, q1, type Row } from './db.ts';
 import { HttpError } from './errors.ts';
+import { scopeKey } from './scope.ts';
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 
 // Challenges are single-use and short-lived, so process memory is enough for a single server.
-const challenges = new Map<string, { challenge: string; accountId?: number; purpose: string; expires: number }>();
+const challenges = new Map<string, { challenge: string; accountId?: number; purpose: string; expires: number; scope: string }>();
 
 function putChallenge(challenge: string, accountId?: number, purpose = 'register'): string {
   const now = Date.now();
   for (const [id, c] of challenges) if (c.expires < now) challenges.delete(id);
   const id = randomUUID();
-  challenges.set(id, { challenge, accountId, purpose, expires: now + CHALLENGE_TTL_MS });
+  challenges.set(id, { challenge, accountId, purpose, expires: now + CHALLENGE_TTL_MS, scope: scopeKey() });
   return id;
 }
 
 function takeChallenge(id: unknown, accountId?: number, purpose = 'register'): string {
   const entry = typeof id === 'string' ? challenges.get(id) : undefined;
   if (typeof id === 'string') challenges.delete(id);
-  if (!entry || entry.expires < Date.now() || entry.accountId !== accountId || entry.purpose !== purpose) {
+  // Account ids repeat from one scope to another, so the id alone does not say whose challenge it is.
+  if (!entry || entry.expires < Date.now() || entry.accountId !== accountId || entry.purpose !== purpose || entry.scope !== scopeKey()) {
     throw new HttpError(400, 'passkey challenge expired, try again');
   }
   return entry.challenge;

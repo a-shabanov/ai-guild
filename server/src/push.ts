@@ -8,24 +8,33 @@ import { config } from './config.ts';
 import { q, q1, type Row } from './db.ts';
 import { HttpError } from './errors.ts';
 import { wantsNotification } from './notification-preferences.ts';
+import { scopeKey } from './scope.ts';
 
 type Vapid = { publicKey: string; privateKey: string };
-let vapid: Promise<Vapid> | undefined;
+const vapid = new Map<string, Promise<Vapid>>();
 
 // Keys come from the environment, or are generated once and kept in the database:
 // changing them invalidates every existing subscription.
 function vapidKeys(): Promise<Vapid> {
-  return (vapid ??= (async () => {
-    const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = process.env;
-    if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-      return { publicKey: VAPID_PUBLIC_KEY, privateKey: VAPID_PRIVATE_KEY };
-    }
-    await q(
-      `insert into settings(key, value) values ('vapid', $1) on conflict (key) do nothing`,
-      [JSON.stringify(webpush.generateVAPIDKeys())],
-    );
-    return (await q1(`select value from settings where key = 'vapid'`))!.value as Vapid;
-  })());
+  const scope = scopeKey();
+  let keys = vapid.get(scope);
+  if (!keys) {
+    keys = (async () => {
+      const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = process.env;
+      if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+        return { publicKey: VAPID_PUBLIC_KEY, privateKey: VAPID_PRIVATE_KEY };
+      }
+      await q(
+        `insert into settings(key, value) values ('vapid', $1) on conflict (key) do nothing`,
+        [JSON.stringify(webpush.generateVAPIDKeys())],
+      );
+      return (await q1(`select value from settings where key = 'vapid'`))!.value as Vapid;
+    })();
+    vapid.set(scope, keys);
+    // A database that is down for a moment must not leave push broken until the next restart.
+    keys.catch(() => vapid.delete(scope));
+  }
+  return keys;
 }
 
 const PUSH_HOSTS = [

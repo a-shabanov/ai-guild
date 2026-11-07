@@ -9,6 +9,7 @@ import type { Readable } from 'node:stream';
 import { Transform } from 'node:stream';
 import type { z } from 'zod';
 import { q, q1, pool, type Row } from './db.ts';
+import { scopeKey } from './scope.ts';
 import { config } from './config.ts';
 import { HttpError } from './errors.ts';
 import { generateKey, hashKey, requireAdmin, type Actor } from './auth.ts';
@@ -16,7 +17,7 @@ import { notifyEvent } from './push.ts';
 import * as S from './schemas.ts';
 import { validatePreset, removeAvatar } from './account-avatars.ts';
 
-const attachmentsDir = join(config.dataDir, 'attachments');
+const attachmentsDir = () => join(config.dataDir, 'attachments');
 
 // ---------- helpers ----------
 
@@ -40,6 +41,8 @@ async function resolveAccount(ref: string | number, actor?: Actor): Promise<Row>
 /** Tells the open streams that something has happened; see GET /api/events/stream. */
 export const news = new EventEmitter();
 news.setMaxListeners(0);
+/** The emitter is process-wide; a stream hears only the scope it was opened in. */
+export const newsChannel = (): string => `event:${scopeKey()}`;
 
 async function addEvent(taskId: number, actor: Actor, type: string, data: Row = {}): Promise<void> {
   // History is written to the task's log, but it is not news: no inbox entry, no push.
@@ -49,7 +52,7 @@ async function addEvent(taskId: number, actor: Actor, type: string, data: Row = 
     [taskId, actor.id, type, JSON.stringify(history ? { ...data, history: true } : data)],
   );
   if (!history) {
-    news.emit('event', row!.id);
+    news.emit(newsChannel(), row!.id);
     notifyEvent(row!.id).catch((err) => console.error('push failed', err));
   }
 }
@@ -815,9 +818,9 @@ export async function addAttachment(
     if (!c) throw new HttpError(404, `comment ${file.commentId} not found on task ${taskId}`);
   }
 
-  await mkdir(attachmentsDir, { recursive: true });
+  await mkdir(attachmentsDir(), { recursive: true });
   const storageKey = randomUUID();
-  const path = join(attachmentsDir, storageKey);
+  const path = join(attachmentsDir(), storageKey);
   let size = 0;
   const limiter = new Transform({
     transform(chunk, _enc, cb) {
@@ -855,7 +858,7 @@ export async function addAttachment(
 export async function getAttachment(id: number): Promise<{ row: Row; path: string }> {
   const row = await q1('select * from attachments where id = $1', [id]);
   if (!row) throw new HttpError(404, `attachment ${id} not found`);
-  const path = join(attachmentsDir, row.storage_key);
+  const path = join(attachmentsDir(), row.storage_key);
   await stat(path).catch(() => {
     throw new HttpError(410, 'attachment content is missing from storage');
   });
@@ -1037,7 +1040,7 @@ export async function analytics(input: z.infer<typeof S.Analytics>): Promise<Row
   };
 }
 
-const logosDir = join(config.dataDir, 'logos');
+const logosDir = () => join(config.dataDir, 'logos');
 const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const LOGO_LIMIT = 5 * 1024 * 1024;
 
@@ -1175,9 +1178,9 @@ export async function setProjectLogo(
   const mime = (file.mime ?? '').split(';')[0]!.trim().toLowerCase();
   if (!LOGO_TYPES.includes(mime)) throw new HttpError(415, 'logo must be a PNG, JPEG or WebP image');
 
-  await mkdir(logosDir, { recursive: true });
+  await mkdir(logosDir(), { recursive: true });
   const key = randomUUID();
-  const path = join(logosDir, key);
+  const path = join(logosDir(), key);
   let size = 0;
   const limiter = new Transform({
     transform(chunk, _enc, cb) {
@@ -1197,14 +1200,14 @@ export async function setProjectLogo(
     key,
     mime,
   ]);
-  if (project.logo_key) await rm(join(logosDir, project.logo_key), { force: true });
+  if (project.logo_key) await rm(join(logosDir(), project.logo_key), { force: true });
   return getProject(id);
 }
 
 export async function getProjectLogo(id: number): Promise<{ path: string; mime: string }> {
   const row = await q1('select logo_key, logo_mime from projects where id = $1', [id]);
   if (!row?.logo_key) throw new HttpError(404, 'this project has no logo');
-  return { path: join(logosDir, row.logo_key), mime: row.logo_mime };
+  return { path: join(logosDir(), row.logo_key), mime: row.logo_mime };
 }
 
 // Tasks may name a project that does not exist yet; it is created on the spot, and an

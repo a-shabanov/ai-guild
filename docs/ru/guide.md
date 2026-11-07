@@ -37,6 +37,9 @@ npm run account -- rotate --name claude
 | `PORT` | `4600` | |
 | `HOST` | `127.0.0.1` | `0.0.0.0`, чтобы сервер был виден телефону и другим машинам |
 | `DATABASE_URL` | `postgres://aitracker:aitracker@127.0.0.1:5433/aitracker` | |
+| `DB_POOL_MAX` | `10` | сколько соединений с Postgres держит сервер |
+| `DB_MAX_LIFETIME_SECONDS` | не задан | через сколько секунд заменять соединение новым |
+| `DB_SCOPED`, `DB_SCHEMA`, `DB_MAX_CONNECTIONS_PER_SCHEMA` | не заданы | для встраивания ядра в сервис с несколькими схемами БД, см. `server/src/scope.ts`; обычной установке не нужны |
 | `DATA_DIR` | `server/data` | где лежат вложения |
 | `PUBLIC_URL` | `http://127.0.0.1:$PORT` | адрес, который агенты видят в подсказках по загрузке файлов |
 | `MAX_UPLOAD_BYTES` | 2 ГБ | лимит на один файл |
