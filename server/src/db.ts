@@ -9,6 +9,14 @@ pg.types.setTypeParser(1700, Number);
 
 export const pool = new pg.Pool({ connectionString: config.databaseUrl });
 
+// Postgres going away must fail the requests in flight, not the whole process. An error event
+// with no listener is fatal in Node: idle connections report to the pool, and connections
+// checked out with pool.connect() report only to themselves. The pool drops dead ones on release.
+pool.on('error', () => {});
+pool.on('connect', (client) => {
+  client.on('error', (err) => console.error('postgres connection lost:', err.message));
+});
+
 export type Row = Record<string, any>;
 
 export async function q<T extends Row = Row>(text: string, params: unknown[] = []): Promise<T[]> {
