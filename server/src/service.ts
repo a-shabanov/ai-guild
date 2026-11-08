@@ -994,7 +994,8 @@ export async function analytics(input: z.infer<typeof S.Analytics>): Promise<Row
     throw new HttpError(400, 'group_by takes one or two dimensions');
   }
   for (const g of groupBy) {
-    if (!(g in GROUP_EXPR)) {
+    // Own keys only: "constructor" is `in` every object, and this list is what stands between input and the SQL.
+    if (!Object.hasOwn(GROUP_EXPR, g)) {
       throw new HttpError(400, `unknown group_by "${g}"; use ${S.GROUP_BYS.join(', ')}`);
     }
   }

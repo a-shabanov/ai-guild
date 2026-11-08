@@ -270,6 +270,8 @@ test('analytics groups by model and effort', async () => {
   const byDay = await api('ivan', 'GET', '/api/analytics?group_by=day');
   assert.match(byDay.body.rows[0].keys[0], /^\d{4}-\d{2}-\d{2}$/);
   assert.equal((await api('ivan', 'GET', '/api/analytics?group_by=nope')).status, 400);
+  // Names every object has must not pass for dimensions.
+  for (const name of ['constructor', 'toString', '__proto__']) assert.equal((await api('ivan', 'GET', `/api/analytics?group_by=${name}`)).status, 400, name);
 
   const unknown = (await api('codex', 'POST', '/api/tasks', { title: 'unknown cost', project: 'UnpricedTest', ...codex })).body;
   await api('codex', 'POST', `/api/tasks/${unknown.id}/time`, { seconds: 60, ...codex });
