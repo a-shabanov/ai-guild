@@ -27,7 +27,15 @@ A public source repository or a green type check alone does not establish produc
 
 ## SaaS
 
-Organisation boundaries, membership, scoped credentials and cross-tenant tests must cover REST, MCP, attachments, events, inbox, analytics and client caches. Then come onboarding, quotas, staging/production operations, recovery, support and the chosen access/billing model.
+A hosted service is being built around this repository, in a separate private one. This repository stays a complete product for one team and carries no organisations, sign-up, plans or billing.
+
+| | This repository (Apache 2.0) | Hosted service (private) |
+| --- | --- | --- |
+| Contains | Server, web/PWA, iOS, REST, MCP, OIDC sign-in | Landing, sign-up, organisations and their members, limits, later billing |
+| Teams | One | Many, each with its own PostgreSQL schema, files and subdomain |
+| How they connect | Publishes commits and the [embedding surface](self-hosting.md#embedding-the-core) | Pins a commit as a git submodule and runs isolation tests before moving to a new one |
+
+Features go here only when they make sense for a single team. What a host needs from the core stays generic: a scope for a piece of work, and settings that can follow it.
 
 ## Mobile
 

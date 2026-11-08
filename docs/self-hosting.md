@@ -28,6 +28,16 @@ This preview has a single shared team: members can see the team's projects and t
 
 Basic task tracking, API keys, work logs and reviews do not require an account in a central SaaS.
 
+## Self-hosted and the hosted service
+
+A self-hosted install is the whole product. It never contacts the hosted service and needs no account there: no sign-up, plan or limit exists in this code. The hosted service is a separate private project built around the same core. See [the roadmap](roadmap.md#saas) for where the line runs.
+
+## Embedding the core
+
+`server/src/embed.ts` is the public surface for running the core inside another process, such as a host of many teams. Everything else in `server/src` can change between versions without notice. Pin a commit: Node runs TypeScript only outside `node_modules`, so a git submodule works and an npm package does not.
+
+Every request runs in a scope, which can set its PostgreSQL schema (with `DB_SCOPED=1`), data directory, public address, upload limit and OIDC client. A scoped install does not run migrations on start: run `migrate()` inside each scope. An install that never enters a scope needs none of this.
+
 ## Configuration
 
 The existing environment reference is in [the setup guide](ru/guide.md#настройки-переменные-окружения). `server/.env.example` covers optional social login. Keep real secrets outside the repository and do not include them in build contexts, screenshots or support reports.
