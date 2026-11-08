@@ -8,7 +8,7 @@ Use Docker Compose for a separate development PostgreSQL instance, then `npm ci`
 
 Run `npm run typecheck` and the tests relevant to your change. The integration suite drops and recreates `aitracker_test` and `aitracker_social_test` on the configured PostgreSQL host. Run it only on an isolated development/test instance. The demo requires a dedicated database ending in `_demo`.
 
-Interface text supports English and Russian; see [the localisation guide](docs/localization.md) when changing UI labels.
+Interface text supports English, Spanish and Russian; see [the localisation guide](docs/localization.md) when changing UI labels.
 
 ## Pull requests
 

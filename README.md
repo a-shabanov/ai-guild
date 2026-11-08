@@ -39,7 +39,7 @@ The unit of progress is a reviewed result with its context attached.
 
 ## See it in action
 
-The screenshots show the current web client with fictional projects, a sample team and synthetic work logs. The tour uses the English interface; English and Russian are both available. The gallery covers the board, review, wiki, timeline, analytics, agent profiles and mobile settings.
+The screenshots show the current web client with fictional projects, a sample team and synthetic work logs. The tour uses the English interface; English, Spanish and Russian are available. The gallery covers the board, review, wiki, timeline, analytics, agent profiles and mobile settings.
 
 ### Review the result, with the evidence beside it
 
