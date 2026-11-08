@@ -73,6 +73,16 @@ struct AnalyticsView: View {
         }
     }
 
+    private func tokenLabel(_ amount: Int, unknown: Int?, entries: Int) -> String {
+        if entries > 0 && unknown == entries { return "—" }
+        return Format.compact(amount) + ((unknown ?? 0) > 0 ? " + ?" : "")
+    }
+
+    private func costLabel(_ amount: Double, unknown: Int?, entries: Int) -> String {
+        if entries > 0 && unknown == entries { return "—" }
+        return Format.money(amount) + ((unknown ?? 0) > 0 ? " + ?" : "")
+    }
+
     private func value(_ row: AnalyticsRow) -> Double {
         switch measure {
         case .time: Double(row.seconds) / 3600
@@ -84,8 +94,8 @@ struct AnalyticsView: View {
     private func label(_ row: AnalyticsRow) -> String {
         switch measure {
         case .time: Format.duration(row.seconds)
-        case .cost: Format.money(row.costUsd)
-        case .tokens: Format.compact(row.inputTokens + row.outputTokens)
+        case .cost: costLabel(row.costUsd, unknown: row.unpricedEntries, entries: row.entries)
+        case .tokens: tokenLabel(row.inputTokens + row.outputTokens, unknown: row.unknownTokensEntries, entries: row.entries)
         }
     }
 
@@ -96,8 +106,8 @@ struct AnalyticsView: View {
         let review = result.tasksByStatus["review"] ?? 0
         return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 16) {
             tile("Время работы", Format.duration(t.seconds), "\(t.entries) записей")
-            tile("Стоимость", Format.money(t.costUsd), t.seconds > 0 ? "\(Format.money(t.costUsd / (Double(t.seconds) / 3600))) за час" : " ")
-            tile("Токены", Format.compact(t.inputTokens + t.outputTokens), "\(Format.compact(t.inputTokens)) in · \(Format.compact(t.outputTokens)) out")
+            tile("Стоимость", costLabel(t.costUsd, unknown: t.unpricedEntries, entries: t.entries), t.seconds > 0 && (t.unpricedEntries ?? 0) == 0 ? "\(Format.money(t.costUsd / (Double(t.seconds) / 3600))) за час" : " ")
+            tile("Токены", tokenLabel(t.inputTokens + t.outputTokens, unknown: t.unknownTokensEntries, entries: t.entries), "\(tokenLabel(t.inputTokens, unknown: t.unknownInputTokensEntries, entries: t.entries)) in · \(tokenLabel(t.outputTokens, unknown: t.unknownOutputTokensEntries, entries: t.entries)) out")
             tile("Задачи", "\(done) готово", "\(review) на проверке")
         }
         .padding(.vertical, 4)
@@ -177,13 +187,13 @@ struct AnalyticsView: View {
             HStack {
                 Text(Format.duration(row.seconds))
                 Spacer()
-                Text("\(Format.compact(row.inputTokens + row.outputTokens)) ток.")
+                Text("\(tokenLabel(row.inputTokens + row.outputTokens, unknown: row.unknownTokensEntries, entries: row.entries)) ток.")
                 Spacer()
-                Text(Format.money(row.costUsd))
+                Text(costLabel(row.costUsd, unknown: row.unpricedEntries, entries: row.entries))
             }
             .font(.subheadline)
             .monospacedDigit()
-            Text("\(row.tasks) задач · \(row.seconds > 0 ? Format.money(row.costUsd / (Double(row.seconds) / 3600)) : "—") за час")
+            Text("\(row.tasks) задач · \(row.seconds > 0 && (row.unpricedEntries ?? 0) == 0 ? Format.money(row.costUsd / (Double(row.seconds) / 3600)) : "—") за час")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

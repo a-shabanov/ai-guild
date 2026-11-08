@@ -167,6 +167,7 @@ struct Avatar: View {
         switch system {
         case "claude": return "ClaudeAvatar"
         case "codex": return "CodexAvatar"
+        case "cursor": return "CursorAvatar"
         default: return nil
         }
     }

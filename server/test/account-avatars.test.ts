@@ -51,8 +51,11 @@ after(async () => {
 
 test('catalog contains all 21 images; picks persist independently of system', async () => {
   const catalog = await request(ownerKey, 'GET', '/api/agent-systems');
-  assert.equal(catalog.status, 200); assert.equal(catalog.body.length, 21);
-  for (const entry of catalog.body) {
+  assert.equal(catalog.status, 200);
+  const withImages = catalog.body.filter((entry: any) => entry.avatar_url !== null);
+  assert.equal(withImages.length, 21);
+  assert.ok(catalog.body.some((entry: any) => entry.id === 'opencode' && entry.avatar_url === null));
+  for (const entry of withImages) {
     assert.equal(entry.avatar_url, `/avatars/${entry.id}.png`);
     const image = await fetch(url + entry.avatar_url); assert.equal(image.status, 200); await image.arrayBuffer();
   }

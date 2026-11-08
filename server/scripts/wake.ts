@@ -17,6 +17,7 @@ import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, st
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { read, summarize } from './lib/sessions.ts';
 
 type Settings = {
@@ -25,7 +26,7 @@ type Settings = {
   projects: Record<string, string>;
   /** Account name -> command; "{prompt}" is replaced with the instructions for the run,
    *  "{session}" with a new session id, by which the transcript is found afterwards. */
-  agents: Record<string, { command: string[] }>;
+  agents: Record<string, { command: string[]; model?: string }>;
   parallel: number;
   timeout_minutes: number;
   poll_seconds: number;
@@ -88,6 +89,7 @@ const DEFAULTS: Settings = {
     },
     // Not every project is a git repository; the sandbox lets the run write inside the project only.
     codex: { command: ['codex', 'exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '{prompt}'] },
+    cursor: { command: ['sh', fileURLToPath(new URL('./cursor-wake.sh', import.meta.url)), '{prompt}'] },
   },
   parallel: 2,
   timeout_minutes: 45,
@@ -178,12 +180,20 @@ function prompt(run: Run): string {
           'Если просьба непонятна — задай вопрос через add_comment и закончи.',
         ]),
     '',
-    'Время и расход токенов запишет сторож после запуска: таймер не запускай и log_time не вызывай.',
+    ...(run.agent === 'cursor'
+      ? [
+          'Время запиши сам через start_timer/stop_timer: для Cursor у сторожа нет проверенного счётчика токенов.',
+          'Не выдумывай токены и стоимость: неизвестные значения оставь пустыми.',
+          ...(settings.agents.cursor.model ? [`Выбранная модель Cursor CLI: ${settings.agents.cursor.model}. Указывай реальную модель и effort, если CLI их сообщает.`] : []),
+        ]
+      : ['Время и расход токенов запишет сторож после запуска: таймер не запускай и log_time не вызывай.']),
   ].join('\n');
 }
 
 /** What the run has spent, read from the transcript that the agent left behind. */
 function usage(run: Run) {
+  // Cursor's stream does not expose verified usage. Never attribute a Codex session to it.
+  if (run.agent === 'cursor') return null;
   const since = run.startedAt! - 2000;
   let file: string | undefined;
   if (run.agent === 'claude' || settings.agents[run.agent].command.includes('{session}')) {
@@ -209,6 +219,7 @@ function usage(run: Run) {
 }
 
 async function account(run: Run): Promise<void> {
+  if (run.agent === 'cursor') return;
   const spent = usage(run);
   if (!spent) return say(`${run.agent} · #${run.task}: записи сессии нет, расход не посчитан`);
   const numbers = {
@@ -264,6 +275,8 @@ function start(run: Run): void {
   const [program, ...args] = settings.agents[run.agent].command.map((part) =>
     part.replaceAll('{prompt}', prompt(run)).replaceAll('{session}', run.session!),
   );
+  const model = settings.agents[run.agent].model;
+  if (model) args.push('--model', model);
   mkdirSync(logDir, { recursive: true });
   const logFile = join(logDir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${run.agent}-${run.task}.log`);
   const log = createWriteStream(logFile);
@@ -351,6 +364,7 @@ async function listen(agent: string): Promise<void> {
 }
 
 async function look(): Promise<void> {
+  settings = readSettings();
   const agents = Object.keys(settings.agents).filter((agent) => key(agent));
   for (const agent of agents) {
     let events: Event[];

@@ -147,9 +147,8 @@ These are **client integrations**, not restrictions on which underlying model yo
 | --- | --- | --- |
 | **Claude Code** | **Ready for preview** | HTTP MCP setup, shared workflow instructions, local file companion, session token accounting and CLI watcher preset |
 | **Codex CLI / desktop app** | **Ready for preview** | HTTP MCP setup, shared workflow instructions, local file companion and session token accounting; automatic wake-up uses the local Codex CLI |
-| Cursor / Windsurf | Not validated yet | No maintained client-specific setup or end-to-end check; no dedicated usage parser or watcher preset |
-| Cline / Roo Code | Not validated yet | No maintained client-specific setup or end-to-end check; no dedicated usage parser or watcher preset |
-| Gemini CLI | Not validated yet | No maintained setup, session usage parser or watcher preset |
+| **Cursor CLI** | MCP connection validated | Setup, shared rules, file companion and watcher preset; live Auto task reading checked; time is recorded by the agent, token accounting unavailable |
+| 40+ other tools: Gemini CLI, OpenCode, GitHub Copilot, Windsurf (Devin), Cline, Zoo Code (Roo Code) and more | Installer available, not validated yet | `npm run connect` installs the skill, the planning command and MCP where the format is documented; no end-to-end check, usage parser or watcher preset |
 | Custom agents and frameworks | API ready; integration required | Use REST or HTTP MCP with your own adapter and actual token/cost reporting |
 
 Other clients are not certified by this preview. The [agent guide](docs/agents.md) explains the integration boundaries, authentication and optional helpers.

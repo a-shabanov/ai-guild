@@ -13,6 +13,7 @@ ios/build-device/
 # Local launch configuration and presentation scratch files
 .claude/
 .codex/
+.cursor/
 .agents/
 *.log
 *.key

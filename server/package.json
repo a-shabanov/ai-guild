@@ -12,6 +12,7 @@
     "dev": "node --watch src/server.ts",
     "account": "node src/cli.ts",
     "wake": "node scripts/wake.ts",
+    "connect": "node scripts/connect-tools.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/**/*.test.ts\"",
     "test:scoped": "DB_SCOPED=1 DB_SCHEMA=scoped_test DB_MAX_CONNECTIONS_PER_SCHEMA=1 node --test --test-timeout=60000 \"test/**/*.test.ts\"",

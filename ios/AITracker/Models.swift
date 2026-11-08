@@ -283,6 +283,10 @@ struct AnalyticsRow: Codable, Identifiable {
     let tasks: Int
     let inputTokens: Int
     let outputTokens: Int
+    let unknownTokensEntries: Int?
+    let unknownInputTokensEntries: Int?
+    let unknownOutputTokensEntries: Int?
+    let unpricedEntries: Int?
     let costUsd: Double
 
     var id: String { keys.map { $0 ?? "—" }.joined(separator: " · ") }
@@ -295,6 +299,10 @@ struct AnalyticsTotals: Codable {
     let tasks: Int
     let inputTokens: Int
     let outputTokens: Int
+    let unknownTokensEntries: Int?
+    let unknownInputTokensEntries: Int?
+    let unknownOutputTokensEntries: Int?
+    let unpricedEntries: Int?
     let costUsd: Double
 }
 

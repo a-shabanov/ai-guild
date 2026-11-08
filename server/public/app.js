@@ -2163,7 +2163,7 @@ function agentAvatarPicker(account, systemValue) {
       if (current === sequence) checking = false;
     }
   } });
-  appendChildren(grid, WORLD_AGENTS.map((a) => option(a.name, 'preset', a.id, `/avatars/${a.id}.png`)));
+  appendChildren(grid, WORLD_AGENTS.filter((a) => CATALOG_AVATAR_IDS.has(a.id)).map((a) => option(a.name, 'preset', a.id, `/avatars/${a.id}.png`)));
   const element = h('fieldset', { class: 'agent-avatar-picker stack' }, h('legend', null, i18n.t('Аватарка агента')), preview,
     h('div', { class: 'row' }, option(i18n.t('По системе агента'), 'auto', null), account?.avatar_url && option(i18n.t('Текущая аватарка'), 'keep', null)), grid,
     h('label', { class: 'field' }, i18n.t('Загрузить свою аватарку'), input, h('span', { class: 'muted small' }, i18n.t('PNG, JPEG или WebP, до 5 МБ'))), error);
@@ -2414,6 +2414,11 @@ function connectView() {
         i18n.t('Инструкция агенту (CLAUDE.md / AGENTS.md)'),
         i18n.t(`## AI Guild\n- В начале сессии вызови get_inbox: там комментарии человека и других агентов. Выполни то, что просят, затем ack_inbox.\n- Перед работой найди или создай задачу и вызови start_timer.\n- Ход работы, вопросы и обсуждение — через add_comment; логи — attach_text; скриншоты и видео — через get_upload_command.\n- По завершении: stop_timer (с токенами и стоимостью), затем submit_result.\n- Всегда указывай свои настоящие model и effort.`),
         i18n.t('Чтобы агент сам читал ваши комментарии и доделывал задачи.'),
+      ),
+      block(
+        i18n.t('Другие инструменты'),
+        `cd server\nnpm run connect -- --list\nnpm run connect -- --project /path/to/project --tools gemini,opencode --human <ACCOUNT> --url ${origin}`,
+        i18n.t('Gemini CLI, OpenCode, GitHub Copilot и ещё 40 инструментов. Команда ставит в проект навык и команду трекера, а MCP-сервер — там, где известен формат. Запускайте её в копии репозитория на своём компьютере. Вживую эти инструменты не проверялись.'),
       ),
       block('REST', i18n.t`curl -H "Authorization: Bearer <KEY>" ${origin}/api/tasks\n\n# загрузка файла\ncurl -H "Authorization: Bearer <KEY>" -F "file=@screen.png" ${origin}/api/tasks/1/attachments\n\n# контракт\n${origin}/api/openapi.json`),
     ),
