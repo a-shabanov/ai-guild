@@ -5,7 +5,7 @@ import { hashKey, requireAdmin, type Actor } from './auth.ts';
 import { pool, q, q1, type Row } from './db.ts';
 import { HttpError } from './errors.ts';
 
-export type Provider = 'google' | 'telegram';
+export type Provider = 'google' | 'telegram' | 'oidc';
 const random = () => randomBytes(32).toString('base64url');
 export const pkceChallenge = (value: string) => createHash('sha256').update(value).digest('base64url');
 
@@ -29,23 +29,88 @@ export const providers = {
 const keySets = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
 export function providerName(value: unknown): Provider {
-  if (value !== 'google' && value !== 'telegram') throw new HttpError(404, 'unknown sign-in provider');
+  if (value !== 'google' && value !== 'telegram' && value !== 'oidc') throw new HttpError(404, 'unknown sign-in provider');
   return value;
 }
 
+const isLocal = (hostname: string) => ['localhost', '127.0.0.1', '[::1]'].includes(hostname) || hostname.endsWith('.localhost');
+function isSafeUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return !url.username && !url.password && !url.hash && (url.protocol === 'https:' || (url.protocol === 'http:' && isLocal(url.hostname)));
+  } catch { return false; }
+}
+// A shared secret here would let anyone holding the client secret forge an ID token.
+const asymmetricAlgorithms = new Set(['RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'ES256', 'ES384', 'ES512', 'EdDSA']);
+
+// Null until every setting is present and safe: a half-filled provider must not appear at all.
+function oidcEndpoints() {
+  const c = config.socialAuth.oidc;
+  const algorithms = c.algorithms?.length ? c.algorithms : ['RS256', 'ES256'];
+  if (!c.clientId || !c.clientSecret || ![c.issuer, c.authorizationUrl, c.tokenUrl, c.jwksUrl].every(isSafeUrl) ||
+      !algorithms.every((a) => asymmetricAlgorithms.has(a))) return null;
+  return {
+    clientId: c.clientId, clientSecret: c.clientSecret, authorization: c.authorizationUrl, token: c.tokenUrl, jwks: c.jwksUrl,
+    issuer: [c.issuer], scope: c.scope ?? 'openid email profile', algorithms,
+  };
+}
+
 export function configured(provider: Provider): boolean {
+  if (provider === 'oidc') return Boolean(oidcEndpoints());
   const c = config.socialAuth[provider];
   return Boolean(c.clientId && c.clientSecret);
 }
+
+// Otherwise a typo looks exactly like nothing was set. Names the settings, never their values.
+if (Object.values(config.socialAuth.oidc).some(Boolean) && !configured('oidc')) {
+  console.warn('OIDC sign-in is off: OIDC_ISSUER, OIDC_AUTHORIZATION_URL, OIDC_TOKEN_URL, OIDC_JWKS_URL, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET are all required, addresses must use HTTPS, algorithms must be asymmetric.');
+}
+
+/** What the sign-in button calls the configured provider; null when there is none. */
+export const oidcLabel = (): string | null => (configured('oidc') ? config.socialAuth.oidc.label ?? 'SSO' : null);
 
 function settings(provider: Provider) {
   if (!configured(provider)) throw new HttpError(503, 'sign-in provider is not configured');
   const origin = new URL(config.publicUrl).origin;
   const url = new URL(origin);
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) {
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocal(url.hostname))) {
     throw new HttpError(503, 'social sign-in requires a public HTTPS URL');
   }
-  return { ...config.socialAuth[provider], ...providers[provider], redirectUri: `${origin}/api/auth/${provider}/callback` };
+  const redirectUri = `${origin}/api/auth/${provider}/callback`;
+  if (provider === 'oidc') return { ...oidcEndpoints()!, redirectUri };
+  return { ...config.socialAuth[provider], ...providers[provider], algorithms: ['RS256'], redirectUri };
+}
+
+// With the issuer, so a new provider that reuses a subject never gets someone else's account.
+const oidcSubject = (issuer: string, subject: string) => `${issuer}#${subject}`;
+
+/** The account already tied to this person at the configured provider, so a repeat never makes a second one. */
+export async function oidcAccount(subject: string): Promise<number | null> {
+  const { issuer: [issuer] } = settings('oidc');
+  const found = await q1(
+    `select a.id from account_identities i join accounts a on a.id = i.account_id
+     where i.provider = 'oidc' and i.subject = $1 and a.deleted_at is null`, [oidcSubject(issuer!, subject)]);
+  return found ? Number(found.id) : null;
+}
+
+/**
+ * Binds an account to a person at the OIDC provider, for a service that vouches for both, such as one that
+ * runs the provider and holds the list of members. Sign-in itself never creates or matches accounts.
+ */
+export async function linkOidcIdentity(accountId: number, subject: string, label: string): Promise<void> {
+  const { issuer: [issuer] } = settings('oidc');
+  try {
+    const linked = await q1(
+      `insert into account_identities(account_id, provider, subject, label)
+       select a.id, 'oidc', $2, $3 from accounts a where a.id = $1 and a.kind = 'human' and a.deleted_at is null
+       on conflict (provider, subject) do update set label = excluded.label
+         where account_identities.account_id = excluded.account_id
+       returning id`, [accountId, oidcSubject(issuer!, subject), label.slice(0, 255)]);
+    if (!linked) throw new HttpError(409, 'provider account is already linked');
+  } catch (error) {
+    if ((error as { code?: string }).code === '23505') throw new HttpError(409, 'provider is already linked; unlink it first');
+    throw error;
+  }
 }
 
 function authorizationUrl(provider: Provider, state: string, flow: Row): string {
@@ -121,6 +186,9 @@ async function identity(provider: Provider, code: string, flow: Row) {
   const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
   if (provider === 'telegram') {
     headers.Authorization = `Basic ${Buffer.from(`${c.clientId}:${c.clientSecret}`).toString('base64')}`;
+  } else if (provider === 'oidc') {
+    // The default method of the OpenID Connect specification, which encodes both parts.
+    headers.Authorization = `Basic ${Buffer.from(`${encodeURIComponent(c.clientId)}:${encodeURIComponent(c.clientSecret)}`).toString('base64')}`;
   } else {
     body.set('client_secret', c.clientSecret);
   }
@@ -135,7 +203,7 @@ async function identity(provider: Provider, code: string, flow: Row) {
       keySets.set(c.jwks, keys);
     }
     const { payload } = await jwtVerify(tokens.id_token, keys, {
-      issuer: c.issuer, audience: c.clientId, algorithms: ['RS256'],
+      issuer: c.issuer, audience: c.clientId, algorithms: c.algorithms,
       requiredClaims: ['sub', 'iat', 'exp', 'nonce'], maxTokenAge: '10m', clockTolerance: 5,
     });
     if (payload.nonce !== flow.nonce || !payload.sub || payload.sub.length > 255 ||
@@ -143,10 +211,10 @@ async function identity(provider: Provider, code: string, flow: Row) {
         (Array.isArray(payload.aud) && payload.aud.length > 1 && payload.azp !== c.clientId)) {
       throw new Error('invalid ID token');
     }
-    const label = provider === 'google' && payload.email_verified === true && typeof payload.email === 'string'
+    const label = provider !== 'telegram' && payload.email_verified === true && typeof payload.email === 'string'
       ? payload.email : typeof payload.preferred_username === 'string' ? `@${payload.preferred_username}`
         : typeof payload.name === 'string' ? payload.name : provider;
-    return { subject: payload.sub, label: label.slice(0, 255) };
+    return { subject: provider === 'oidc' ? oidcSubject(c.issuer[0]!, payload.sub) : payload.sub, label: label.slice(0, 255) };
   } catch {
     // Provider responses may contain codes, credentials and tokens. Never log them.
     throw new HttpError(401, 'provider verification failed');

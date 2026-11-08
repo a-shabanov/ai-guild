@@ -635,6 +635,12 @@ function loginView() {
 }
 
 const providerLabels = { google: 'Google', telegram: 'Telegram' };
+// A configured OIDC provider comes first and replaces the buttons nobody set up: it is the way in on that install.
+function providerEntries() {
+  const oidc = state.config?.providers?.oidc;
+  return [...(oidc ? [['oidc', state.config.oidc_label]] : []),
+    ...Object.entries(providerLabels).filter(([provider]) => !oidc || state.config?.providers?.[provider])];
+}
 const factorLabels = { email: 'Email', telegram: 'Telegram' };
 async function acceptSignIn(result) {
   if (result.two_factor_required) {
@@ -717,7 +723,7 @@ function enrollTwoFactor(channel) {
   });
 }
 function providerButtons(err, intent = 'login', invitationToken) {
-  return h('div', { class: 'stack' }, Object.entries(providerLabels).map(([provider, label]) =>
+  return h('div', { class: 'stack' }, providerEntries().map(([provider, label]) =>
     h('button', { type: 'button', class: 'big', disabled: !state.config?.providers?.[provider],
       title: state.config?.providers?.[provider] ? '' : i18n.t`${label} пока не настроен администратором`,
       onclick: async (e) => {
@@ -2577,7 +2583,7 @@ async function profileView(section) {
       section==='sign-in' && state.me.kind === 'human' && identities && h('section', { class: 'card pad stack' },
         h('h2', null, i18n.t('Способы входа')),
         h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Привяжите Google и Telegram, чтобы входить без API-ключа.')),
-        Object.entries(providerLabels).map(([provider, label]) => {
+        providerEntries().map(([provider, label]) => {
           const identity = identities.find((i) => i.provider === provider);
           return h('div', { class: 'row' }, h('strong', null, label),
             h('span', { class: 'muted small' }, identity?.label ?? (state.config?.providers?.[provider] ? i18n.t('Не привязан') : i18n.t('Не настроен администратором'))),
@@ -3311,6 +3317,14 @@ async function boot(relock = true) {
   if(feedback.has('auth_error')||feedback.has('auth')){
     toast(feedback.get('auth_error')||(feedback.get('auth')==='linked'?i18n.t('Способ входа привязан'):i18n.t('Вы вошли в аккаунт')));
     history.replaceState(null,'',location.pathname+location.hash);
+  }
+  // A service around the tracker sends its members here, so they don't have to press the only button there is.
+  if(feedback.get('sign_in')==='oidc'){
+    history.replaceState(null,'',location.pathname+location.hash);
+    if(!state.me && !state.appLock?.locked && state.config?.providers?.oidc){
+      try{location.assign((await api('POST','/auth/oidc/start',{intent:'login'})).authorization_url);}
+      catch(error){toast(error.message);}
+    }
   }
   if(state.me && !state.appLock?.setup){offerPasskey();flushOutbox();checkAppUpdate();}
 }

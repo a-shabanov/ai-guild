@@ -77,7 +77,7 @@ test('providers advertise availability without credentials; unavailable provider
   const response = await fetch(url + '/api/config');
   const text = await response.text();
   assert.ok(!text.includes('test-secret') && !text.includes('test-client'));
-  assert.deepEqual(JSON.parse(text).providers, { google: true, telegram: true });
+  assert.deepEqual(JSON.parse(text).providers, { google: true, telegram: true, oidc: false });
   config.socialAuth.google.clientSecret = '';
   assert.equal((await post('/api/auth/google/start')).status, 503);
   config.socialAuth.google.clientSecret = 'test-secret';

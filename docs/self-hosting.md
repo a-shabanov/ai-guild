@@ -18,6 +18,7 @@ This preview has a single shared team: members can see the team's projects and t
 | Capability | Requirements and current limits |
 | --- | --- |
 | Google / Telegram | Configure provider credentials and callback origin; use administrator invitations |
+| Corporate SSO (OpenID Connect) | Set all `OIDC_*` addresses and the client in `server/.env`, see `server/.env.example`. Addresses are never discovered or taken from a request; only asymmetric signatures are accepted. Sign-in does not create accounts: use administrator invitations |
 | Optional email / Telegram codes | SMTP with TLS or a started Telegram bot, verified channel and a separate HMAC secret; disabled until delivery is configured. See [setup](ru/guide.md#второй-шаг-входа-по-желанию) |
 | Web passkeys | HTTPS origin and matching WebAuthn RP configuration |
 | Native iOS passkeys | The server's domain must be associated with the signed app; arbitrary server URLs do not enable native passkeys automatically |

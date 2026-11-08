@@ -16,7 +16,7 @@ export type Actor = {
 
 export const KEY_PREFIX = 'ait_';
 export const SESSION_PREFIX = 'ats_';
-export type SessionMethod = 'key' | 'passkey' | 'google' | 'telegram';
+export type SessionMethod = 'key' | 'passkey' | 'google' | 'telegram' | 'oidc';
 
 export function generateKey(): string {
   return KEY_PREFIX + randomBytes(32).toString('base64url');
@@ -33,7 +33,7 @@ export async function createSession(
   identityId?: number,
 ): Promise<string> {
   const token = SESSION_PREFIX + randomBytes(32).toString('base64url');
-  if (method === 'google' || method === 'telegram') {
+  if (method !== 'key' && method !== 'passkey') {
     const session = await q1(
       `insert into sessions(token_hash, account_id, method, user_agent, expires_at, identity_id)
        select $1, a.id, $3, $4, now() + make_interval(days => $5::int), i.id

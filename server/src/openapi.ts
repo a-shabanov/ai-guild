@@ -96,7 +96,7 @@ export function buildOpenApi(): object {
       parameters.push({ name: 'pageId', in: 'path', required: true, schema: { type: 'integer', minimum: 1 } });
     }
     if (op.path.includes('{provider}')) {
-      parameters.push({ name: 'provider', in: 'path', required: true, schema: { type: 'string', enum: ['google', 'telegram'] } });
+      parameters.push({ name: 'provider', in: 'path', required: true, schema: { type: 'string', enum: ['google', 'telegram', 'oidc'] } });
     }
     if(op.path.includes('{channel}'))parameters.push({name:'channel',in:'path',required:true,schema:{type:'string',enum:['email','telegram']}});
     if (op.query) {

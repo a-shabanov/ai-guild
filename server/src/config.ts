@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { currentScope } from './scope.ts';
+import { currentScope, type OidcSettings } from './scope.ts';
 
 const root = resolve(import.meta.dirname, '..');
 // Shared with the iOS app; changed by scripts/version.mjs.
@@ -22,6 +22,18 @@ const baseDataDir = resolve(process.env.DATA_DIR ?? resolve(root, 'data'));
 const baseMaxUploadBytes = Number(process.env.MAX_UPLOAD_BYTES ?? 2 * 1024 ** 3);
 let basePublicUrl = process.env.PUBLIC_URL ?? `http://127.0.0.1:${port}`;
 const optionalNumber = (value: string | undefined) => (value ? Number(value) : undefined);
+// Addresses come only from here, never from a request or a discovery document.
+const baseOidc: OidcSettings = {
+  issuer: process.env.OIDC_ISSUER ?? '',
+  authorizationUrl: process.env.OIDC_AUTHORIZATION_URL ?? '',
+  tokenUrl: process.env.OIDC_TOKEN_URL ?? '',
+  jwksUrl: process.env.OIDC_JWKS_URL ?? '',
+  clientId: process.env.OIDC_CLIENT_ID ?? '',
+  clientSecret: process.env.OIDC_CLIENT_SECRET ?? '',
+  scope: process.env.OIDC_SCOPE || undefined,
+  algorithms: process.env.OIDC_ALGORITHMS?.split(',').map((s) => s.trim()).filter(Boolean),
+  label: process.env.OIDC_LABEL || undefined,
+};
 
 export const config = {
   version: release.version,
@@ -42,7 +54,7 @@ export const config = {
     /** With DB_SCOPED: how many pool connections one schema may hold; no limit by default. */
     maxPerSchema: optionalNumber(process.env.DB_MAX_CONNECTIONS_PER_SCHEMA),
   },
-  // These four follow the scope of the current request; see scope.ts.
+  // These follow the scope of the current request; see scope.ts.
   get dataDir() {
     return currentScope()?.dataDir ?? baseDataDir;
   },
@@ -81,6 +93,10 @@ export const config = {
     telegram: {
       clientId: process.env.TELEGRAM_CLIENT_ID ?? '',
       clientSecret: process.env.TELEGRAM_CLIENT_SECRET ?? '',
+    },
+    // Follows the scope, so each organization of a shared process can have a client of its own.
+    get oidc() {
+      return currentScope()?.oidc ?? baseOidc;
     },
   },
   // Contact that push services (Apple, Google, Mozilla) see; must be a mailto: or https: URL.

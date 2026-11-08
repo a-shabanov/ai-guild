@@ -87,14 +87,14 @@ export const UpdateAccount = z.object({
     .describe('Catalog avatar system id; null clears a previous pick'),
 });
 
-export const AuthProvider = z.enum(['google', 'telegram']);
+export const AuthProvider = z.enum(['google', 'telegram', 'oidc']);
 export const ClientType = z.enum(['desktop_browser','mobile_browser','desktop_pwa','mobile_pwa','ios']);
 export const DevicePlatform = z.enum(['macos','windows','linux','ios','android','unknown']);
 export const DeviceInput = z.object({installation_id:z.uuid(),client_type:ClientType,platform:DevicePlatform});
 export type DeviceRegistration = z.infer<typeof DeviceInput>;
 export const RenameDevice = z.object({name:z.string().trim().min(1).max(80).regex(/^[^\x00-\x1f\x7f]+$/)});
 export const AccountDevice = z.object({id:z.number(),name:z.string(),client_type:ClientType,platform:DevicePlatform,
-  created_at:z.string(),last_used_at:z.string(),sessions:z.number(),current:z.boolean(),sign_in_methods:z.array(z.enum(['key','passkey','google','telegram']))});
+  created_at:z.string(),last_used_at:z.string(),sessions:z.number(),current:z.boolean(),sign_in_methods:z.array(z.enum(['key','passkey','google','telegram','oidc']))});
 export const TwoFactorChannel = z.enum(['email','telegram']);
 export const TwoFactorCode = z.string().regex(/^\d{6}$/);
 export const TwoFactorSend = z.object({channel:TwoFactorChannel,challenge_token:z.string().optional()});

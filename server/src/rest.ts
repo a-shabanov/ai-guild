@@ -152,7 +152,8 @@ export function restRouter(): Router {
   r.get('/config', (_req, res) => {
     res.json({
       passkeys: { rp_id: config.webauthn.rpId, origins: config.webauthn.origins },
-      providers: { google: social.configured('google'), telegram: social.configured('telegram') },
+      providers: { google: social.configured('google'), telegram: social.configured('telegram'), oidc: social.configured('oidc') },
+      oidc_label: social.oidcLabel(),
       two_factor: twoFactor.available(),
       apns: apnsConfigured(),
       version: config.version,

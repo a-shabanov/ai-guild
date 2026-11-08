@@ -4,6 +4,20 @@
 // Holds no SQL and imports nothing from the app, so config.ts and db.ts can both read it.
 import { AsyncLocalStorage } from 'node:async_hooks';
 
+export type OidcSettings = {
+  issuer: string;
+  authorizationUrl: string;
+  tokenUrl: string;
+  jwksUrl: string;
+  clientId: string;
+  clientSecret: string;
+  scope?: string;
+  /** Asymmetric only; RS256 and ES256 when empty. */
+  algorithms?: string[];
+  /** What the sign-in button calls the provider. */
+  label?: string;
+};
+
 export type Scope = {
   /** Identifies the scope: events, passkey challenges and cached keys stay within it. */
   key: string;
@@ -12,6 +26,7 @@ export type Scope = {
   dataDir?: string;
   publicUrl?: string;
   maxUploadBytes?: number;
+  oidc?: OidcSettings;
 };
 
 const store = new AsyncLocalStorage<Scope>();
