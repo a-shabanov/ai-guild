@@ -113,7 +113,7 @@ async function api(method, path, body) {
   }
   if (!res.ok) throw Object.assign(new Error(offline
     ? i18n.t('Нет сети. Данные этого экрана ещё не сохранены на устройстве.')
-    : data?.error ?? `HTTP ${res.status}`), { offline });
+    : data?.error ?? `HTTP ${res.status}`), { offline, serverProblem: !offline && (res.status === 429 || res.status >= 500) });
   const list = method === 'GET' && /^\/(tasks|projects|accounts|passkeys|devices|auth\/identities)(\?|$)/.test(path);
   if (method === 'GET' && (data === null || typeof data !== 'object' || (list && !Array.isArray(data)))) {
     throw Object.assign(new Error(offline
@@ -588,6 +588,23 @@ async function logout() {
   state.appLock = null; state.lockMode = null; state.quickUnlock = null;
   localStorage.removeItem('ait-app-lock-configured');
   render();
+}
+
+// The server answered, and not about who this is: too many requests, or something broken on its side.
+// Showing the sign-in screen then would tell a person with a good session that they were signed out.
+// An answer the service worker made up while offline is not the server's, and keeps its own handling.
+async function serverProblem(res) {
+  if ((res.status !== 429 && res.status < 500) || res.headers.has('X-Offline') || res.headers.has('X-From-Cache')) return null;
+  const data = await res.clone().json().catch(() => null);
+  return Object.assign(new Error(data?.error || i18n.t('Сервер временно недоступен. Попробуйте ещё раз чуть позже.')), { serverProblem: true });
+}
+
+function serverProblemView(message) {
+  const again = h('button', { class: 'btn primary', onclick: async (e) => { e.currentTarget.disabled = true; state.bootProblem = null; await boot(); } }, i18n.t('Повторить'));
+  return h('div', { class: 'login' },
+    h('h1', {}, 'AI Guild'),
+    h('p', { class: 'error', role: 'alert' }, message),
+    again);
 }
 
 function loginView() {
@@ -3205,6 +3222,11 @@ async function render({ reload = true } = {}) {
   clearInterval(state.twoFactorTicker);
   tip.hidden = true;
   disposePasscodeView();
+  if (state.bootProblem) {
+    navigation.clear();
+    app.replaceChildren(serverProblemView(state.bootProblem));
+    return;
+  }
   if(state.quickUnlock && !state.appLock?.locked) {
     navigation.clear();
     const offer=state.quickUnlock;
@@ -3325,10 +3347,12 @@ async function lockApplication() {
 async function boot(relock = true) {
   booting = true;
   navigation.clear();
-  const configPromise = state.config ? Promise.resolve(state.config) : fetch('/api/config').then((r) => r.json()).catch(() => null);
+  const configPromise = state.config ? Promise.resolve(state.config) : fetch('/api/config').then((r) => (r.ok ? r.json() : null)).catch(() => null);
   try {
     const [config,lock] = await Promise.all([configPromise,fetch('/api/app-lock'+(relock?'/lock':'/status'),{method:relock?'POST':'GET',headers:pwa.clientHeaders(),cache:'no-store'})]);
     state.config=config;
+    const lockProblem=await serverProblem(lock);
+    if(lockProblem)throw lockProblem;
     state.appLock=lock.ok?await lock.json():null;
     if(lock.status!==401 && !lock.ok)throw new Error('Lock status unavailable');
     if(state.appLock?.configured){localStorage.setItem('ait-app-lock-configured','1');}
@@ -3336,6 +3360,8 @@ async function boot(relock = true) {
     if(state.appLock?.locked){state.me=null;state.accounts=[];state.autoBiometric=true;pwa.hidePrivateData();}
     else {
       const res=await fetch('/api/me',{headers:pwa.clientHeaders()});
+      const meProblem=await serverProblem(res);
+      if(meProblem)throw meProblem;
       state.me=res.ok?await res.json():null;
       if(res.status===423){state.appLock={...(state.appLock||{}),configured:true,locked:true};state.autoBiometric=true;}
       if(state.me?.kind==='human' && state.appLock && !state.appLock.configured && !state.appLock.setup_skipped)state.appLock.setup=true;
@@ -3344,9 +3370,10 @@ async function boot(relock = true) {
         pwa.pushEnabled(api).catch(()=>{});
       }
     }
-  } catch {
+  } catch (error) {
     state.me=null;
-    if(localStorage.getItem('ait-app-lock-configured'))state.appLock={configured:true,locked:true,biometric:false};
+    if(error.serverProblem)state.bootProblem=error.message;
+    else if(localStorage.getItem('ait-app-lock-configured'))state.appLock={configured:true,locked:true,biometric:false};
   }
   booting=false;
   await render();finishSplash();

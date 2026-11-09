@@ -577,5 +577,7 @@ export default {
   "Дождитесь загрузки изображения.": "Wait for the image to load.",
   "Аватарка: {0}": "Avatar: {0}",
   "Аватарка": "Avatar",
+  "Сервер временно недоступен. Попробуйте ещё раз чуть позже.": "The server is unavailable for now. Try again a little later.",
+  "Повторить": "Try again",
   "Аккаунт создан, но аватарка не сохранена. Её можно изменить в списке аккаунтов. {0}": "Account created, but the avatar was not saved. You can change it in the accounts list. {0}"
 };
