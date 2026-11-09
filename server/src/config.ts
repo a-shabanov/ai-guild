@@ -19,6 +19,7 @@ const baseWebauthn = {
   rpName: 'AI Guild',
 };
 const baseDataDir = resolve(process.env.DATA_DIR ?? resolve(root, 'data'));
+const baseTeamName = process.env.TEAM_NAME?.trim().slice(0, 80) || '';
 const baseMaxUploadBytes = Number(process.env.MAX_UPLOAD_BYTES ?? 2 * 1024 ** 3);
 let basePublicUrl = process.env.PUBLIC_URL ?? `http://127.0.0.1:${port}`;
 const optionalNumber = (value: string | undefined) => (value ? Number(value) : undefined);
@@ -60,6 +61,10 @@ export const config = {
   },
   publicDir: resolve(root, 'public'),
   migrationsDir: resolve(root, 'migrations'),
+  // A self-hosted install may name its team; a host of many teams names each one in its scope.
+  get team(): { name: string; homeUrl?: string } | null {
+    return currentScope()?.team ?? (baseTeamName ? { name: baseTeamName } : null);
+  },
   get maxUploadBytes() {
     return currentScope()?.maxUploadBytes ?? baseMaxUploadBytes;
   },

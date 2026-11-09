@@ -169,6 +169,7 @@ export default {
   "Входящие": "Inbox",
   "Аналитика": "Analytics",
   "Аккаунты": "Accounts",
+  "Все организации": "All organizations",
   "Подключение": "Connect",
   "Профиль и устройство": "Profile and device",
   "Нет сети — показаны сохранённые данные": "Offline — showing saved data",

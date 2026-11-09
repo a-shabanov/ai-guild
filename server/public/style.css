@@ -196,6 +196,24 @@ pre {
   border-radius: 5px;
   vertical-align: middle;
 }
+.team-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+  margin-right: 12px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.team-sign-in { font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
+a.team-name:hover { border-color: var(--muted); text-decoration: none; }
+@media (max-width: 720px) { .team-name { max-width: 42vw; } }
 .brand .version {
   margin-left: 6px;
   color: var(--muted);

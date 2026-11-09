@@ -4,7 +4,7 @@
 // A self-hosted install needs none of this: it runs server.ts and never enters a scope.
 export { buildApp } from './server.ts';
 export { runInScope } from './scope.ts';
-export type { OidcSettings, Scope } from './scope.ts';
+export type { OidcSettings, Scope, TeamSettings } from './scope.ts';
 export { migrate, pool } from './db.ts';
 export { createAccount, deleteAccount, listAccounts, rotateKey, updateAccount } from './service.ts';
 export { writeExport } from './portable.ts';

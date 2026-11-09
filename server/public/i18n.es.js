@@ -170,6 +170,7 @@ export default {
   "Входящие": "Recibidos",
   "Аналитика": "Analíticas",
   "Аккаунты": "Cuentas",
+  "Все организации": "Todas las organizaciones",
   "Подключение": "Conexión",
   "Профиль и устройство": "Perfil y dispositivo",
   "Нет сети — показаны сохранённые данные": "Sin conexión: se muestran los datos guardados",

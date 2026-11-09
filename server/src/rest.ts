@@ -154,6 +154,7 @@ export function restRouter(): Router {
       passkeys: { rp_id: config.webauthn.rpId, origins: config.webauthn.origins },
       providers: { google: social.configured('google'), telegram: social.configured('telegram'), oidc: social.configured('oidc') },
       oidc_label: social.oidcLabel(),
+      team: config.team && { name: config.team.name, home_url: config.team.homeUrl ?? null },
       two_factor: twoFactor.available(),
       apns: apnsConfigured(),
       version: config.version,

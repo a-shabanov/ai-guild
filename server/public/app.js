@@ -562,6 +562,7 @@ function shell(active, ...content) {
       'header',
       { class: 'topbar' },
       h('a', { class: 'brand', href: '#/projects', title: release() && i18n.t`Версия ${release()}` }, h('img', { class: 'brand-icon', src: '/icons/favicon-32.png?v=c76fb7f1fa02', alt: '' }), 'AI Guild', h('span', { class: 'version desktop-only' }, state.config?.version ? `${appVersion.version} · ${appVersion.build}` : '')),
+      teamLabel(),
       tabs('desktop-tabs'),
       h('span', { class: 'spacer' }),
       i18n.languagePicker(),
@@ -646,6 +647,7 @@ function loginView() {
         },
       },
       h('div', { class: 'row' }, h('h1', { style: 'margin:0' }, 'AI Guild'), h('span', { class: 'spacer' }), i18n.languagePicker()),
+      state.config?.team?.name && h('p', { class: 'team-sign-in', style: 'margin:0' }, state.config.team.name),
       h('p', { class: 'muted', style: 'margin:0' }, i18n.t('Войдите способом, который привязан к вашему аккаунту.')),
       providerButtons(err),
       !Object.values(state.config?.providers ?? {}).some(Boolean) && h('p', { class: 'muted small', style: 'margin:0' }, i18n.t('Вход через Google и Telegram пока не настроен администратором.')),
@@ -2453,6 +2455,15 @@ function showInvitation(name, invitation) {
 }
 
 // ---------- connect ----------
+
+// Which team this is, always in sight: with several, the same screens are easy to mistake for one another.
+// Where the host has a page of all of them, the name leads there.
+function teamLabel() {
+  const team = state.config?.team;
+  if (!team?.name) return null;
+  const props = { class: 'team-name', title: team.home_url ? i18n.t('Все организации') : team.name };
+  return team.home_url && /^https?:\/\//.test(team.home_url) ? h('a', { ...props, href: team.home_url }, team.name) : h('span', props, team.name);
+}
 
 function connectView() {
   const origin = location.origin;

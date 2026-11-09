@@ -27,7 +27,11 @@ export type Scope = {
   publicUrl?: string;
   maxUploadBytes?: number;
   oidc?: OidcSettings;
+  /** What its people call this team, shown in the header, and where they can pick another one. */
+  team?: TeamSettings;
 };
+
+export type TeamSettings = { name: string; homeUrl?: string };
 
 const store = new AsyncLocalStorage<Scope>();
 

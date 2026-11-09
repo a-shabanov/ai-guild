@@ -33,6 +33,7 @@ const scopeOf = (name: string) => ({
   dataDir: join(dataDir, name),
   publicUrl: `https://${name}.example.test`,
   maxUploadBytes: name === 'alpha' ? 20 : 1000,
+  ...(name === 'alpha' && { team: { name: 'Alpha <Team>', homeUrl: 'https://app.example.test/organization/?org=alpha' } }),
 });
 
 let server: Server;
@@ -201,6 +202,12 @@ test('the origin check and passkeys use the address of the scope', async () => {
   const options = await call('alpha', 'POST', '/api/passkeys/login/options', { headers: { Origin: 'https://alpha.example.test' }, json: {} });
   assert.equal(options.status, 200, options.text);
   assert.equal(options.body.options?.rpId ?? options.body.rpId, 'alpha.example.test');
+});
+
+test('the team named by the scope is what the app shows, and a scope without one shows none', async () => {
+  const alpha = await call('alpha', 'GET', '/api/config');
+  assert.deepEqual(alpha.body.team, { name: 'Alpha <Team>', home_url: 'https://app.example.test/organization/?org=alpha' });
+  assert.equal((await call('beta', 'GET', '/api/config')).body.team, null);
 });
 
 test('a passkey challenge issued in one scope cannot be used in another', async () => {
