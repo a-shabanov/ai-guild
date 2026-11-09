@@ -8,6 +8,7 @@ The server runs on Node.js and PostgreSQL, with attachments and project logos un
 - Set unique PostgreSQL credentials. The root Compose file contains local development defaults and binds PostgreSQL to localhost.
 - Put the app behind an HTTPS reverse proxy. Set `PUBLIC_URL` to the real public origin and validate proxy trust settings for your network; the current Express configuration trusts loopback proxies.
 - Persist both PostgreSQL and `DATA_DIR`. A database backup alone does not preserve attachment bytes or logos.
+- `npm run data -- export tracker.tar.gz` writes the team's rows and files to one file, which `npm run data -- import tracker.tar.gz` loads into an empty install of the same version. It is for moving a team, also from AI Guild Cloud. Sessions, passkeys, second factors, devices and sign-in links stay behind. API keys keep working, and `npm run account -- rotate --name <name>` gives anyone a new one. Treat the file as sensitive: it holds all of the team's data.
 - Limit upload sizes, requests and exposed ports according to your environment. A production configuration and security acceptance test are planned.
 - Create an administrator locally with the account CLI, then invite the trusted people who should use this instance.
 

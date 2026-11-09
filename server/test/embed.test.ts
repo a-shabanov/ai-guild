@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 test('the embedding surface is exactly what is promised', async () => {
   const embed = await import('../src/embed.ts');
   assert.deepEqual(Object.keys(embed).sort(), [
-    'buildApp', 'createAccount', 'deleteAccount', 'linkOidcIdentity', 'listAccounts', 'migrate', 'oidcAccount', 'pool', 'rotateKey', 'runInScope', 'updateAccount',
+    'buildApp', 'createAccount', 'deleteAccount', 'linkOidcIdentity', 'listAccounts', 'migrate', 'oidcAccount', 'pool', 'rotateKey', 'runInScope', 'updateAccount', 'writeExport',
   ]);
   await embed.pool.end();
 });

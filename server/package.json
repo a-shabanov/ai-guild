@@ -14,6 +14,7 @@
     "start": "node src/server.ts",
     "dev": "node --watch src/server.ts",
     "account": "node src/cli.ts",
+    "data": "node src/data-cli.ts",
     "wake": "node scripts/wake.ts",
     "connect": "node scripts/connect-tools.ts",
     "typecheck": "tsc --noEmit",

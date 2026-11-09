@@ -7,4 +7,5 @@ export { runInScope } from './scope.ts';
 export type { OidcSettings, Scope } from './scope.ts';
 export { migrate, pool } from './db.ts';
 export { createAccount, deleteAccount, listAccounts, rotateKey, updateAccount } from './service.ts';
+export { writeExport } from './portable.ts';
 export { linkOidcIdentity, oidcAccount } from './social-auth.ts';
