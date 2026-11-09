@@ -674,6 +674,38 @@ button.danger { color: var(--critical); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.file-wrap {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.file-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+}
+/* Touch screens have no hover, so there the button stays visible. */
+@media (hover: hover) {
+  .file-delete {
+    opacity: 0;
+  }
+  .file-wrap:hover .file-delete,
+  .file-delete:focus-visible {
+    opacity: 1;
+  }
+}
 .timelog {
   display: flex;
   gap: 8px;

@@ -21,7 +21,7 @@ export function resolvePreferences(value: unknown): NotificationPreferences {
 export function wantsNotification(type: string, preferences: unknown): boolean {
   const categories: Record<string, keyof NotificationPreferences> = {
     comment_added: 'comments', result_submitted: 'results', status_changed: 'statuses',
-    task_assigned: 'assignments', task_created: 'tasks', attachment_added: 'attachments',
+    task_assigned: 'assignments', task_created: 'tasks', attachment_added: 'attachments', attachment_deleted: 'attachments',
   };
   return resolvePreferences(preferences)[categories[type] ?? 'activity'];
 }

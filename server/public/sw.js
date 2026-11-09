@@ -2,7 +2,7 @@
 // VERSION is written by scripts/version.mjs. Each release caches its complete shell.
 const VERSION = 'v0.3.12-b24';
 // Refresh existing installations even when this fix ships within the same release.
-const SHELL = `shell-${VERSION}-zoom-lock-1-profiles-1-board-feedback-1-wiki-1-es-1-tools-1-oidc-1`;
+const SHELL = `shell-${VERSION}-zoom-lock-1-profiles-1-board-feedback-1-wiki-1-es-1-tools-1-oidc-1-delete-files-1`;
 const API = `api-${VERSION}`; // last successful GET responses, for reading offline
 const FILES = `files-${VERSION}`; // image attachments
 const SHARE = 'share'; // payload handed over by the OS share sheet
@@ -114,6 +114,26 @@ async function attachment(request) {
   return res;
 }
 
+// A task's file can be deleted, so the network decides; the stored copy is for reading offline.
+async function attachmentFile(request) {
+  const cache = await caches.open(FILES);
+  let res;
+  try {
+    res = await fetch(request);
+  } catch (err) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw err;
+  }
+  if (res.status === 404 || res.status === 410) await cache.delete(request);
+  else if (res.status === 200 && res.headers.get('content-type')?.startsWith('image/') && !(await cache.match(request))) {
+    await cache.put(request, res.clone());
+    const keys = await cache.keys();
+    for (const old of keys.slice(0, Math.max(0, keys.length - FILES_LIMIT))) await cache.delete(old);
+  }
+  return res;
+}
+
 async function receiveShare(request) {
   const form = await request.formData();
   const cache = await caches.open(SHARE);
@@ -163,7 +183,7 @@ self.addEventListener('fetch', (event) => {
 
   if (/^\/api\/attachments\/\d+\/content$/.test(url.pathname)) {
     // Video seeks with Range requests; those go straight to the network.
-    if (!request.headers.has('range')) event.respondWith(attachment(request));
+    if (!request.headers.has('range')) event.respondWith(attachmentFile(request));
     return;
   }
   if (/^\/api\/(projects\/\d+\/logo|accounts\/\d+\/avatar)$/.test(url.pathname)) {

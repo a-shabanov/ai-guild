@@ -14,6 +14,7 @@ function worker() {
       storage.set(key(request), response.clone());
     },
     delete: async (request: Request | string) => storage.delete(key(request)),
+    keys: async () => [...storage.keys()],
   };
   let network: (() => Response) | null = () => Response.json([{id:1}]);
   const deleted: string[] = [];
@@ -24,9 +25,10 @@ function worker() {
   };
   vm.createContext(context);
   vm.runInContext(readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8') +
-    '\nglobalThis.read = apiRead;globalThis.shellFiles = SHELL_FILES;', context);
+    '\nglobalThis.read = apiRead;globalThis.readFile = attachmentFile;globalThis.shellFiles = SHELL_FILES;', context);
   const request = new Request('https://tracker.test/api/tasks');
   return { storage, deleted, request, shellFiles: context.shellFiles as string[], read: () => context.read(request) as Promise<Response>,
+    readFile: (request: Request) => context.readFile(request) as Promise<Response>,
     failWrites: () => { writable = false; },
     offline: () => {network = null;}, respond: (response: () => Response) => {network = response;} };
 }
@@ -80,4 +82,23 @@ test('invalid successful responses cannot overwrite useful offline data; session
   assert.equal((await f.read()).status, 401);
   assert.equal(f.storage.size, 0);
   assert.equal(f.deleted.length, 4);
+});
+
+test('an attachment comes from the network, its copy serves offline, and a deleted one loses its copy', async () => {
+  const f = worker();
+  const request = new Request('https://tracker.test/api/attachments/7/content');
+  const image = () => new Response('picture', { headers: { 'Content-Type': 'image/png' } });
+  f.respond(image);
+  assert.equal(await (await f.readFile(request)).text(), 'picture');
+  assert.equal(f.storage.has(request.url), true);
+
+  f.offline();
+  assert.equal(await (await f.readFile(request)).text(), 'picture');
+
+  f.respond(() => Response.json({ error: 'attachment 7 not found' }, { status: 404 }));
+  assert.equal((await f.readFile(request)).status, 404);
+  assert.equal(f.storage.has(request.url), false);
+
+  f.offline();
+  await assert.rejects(f.readFile(request));
 });

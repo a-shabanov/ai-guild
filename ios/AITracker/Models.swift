@@ -257,6 +257,7 @@ struct TrackerEvent: Codable, Identifiable {
         case "task_edited": return "изменил(а) задачу"
         case "result_submitted": return "отправил(а) результат → \(status("to"))"
         case "attachment_added": return "приложил(а) файл \(string("filename") ?? "")"
+        case "attachment_deleted": return "удалил(а) файл \(string("filename") ?? "")"
         case "link_added": return "добавил(а) связь с задачей"
         case "link_removed": return "убрал(а) связь с задачей"
         case "agent_run":

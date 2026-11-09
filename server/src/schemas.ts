@@ -440,6 +440,14 @@ export const Attachment = z.object({
   created_at: ts,
 });
 
+export const DeletedAttachment = z.object({
+  ok: z.boolean(),
+  id: z.number(),
+  task_id: z.number(),
+  filename: z.string(),
+  size: z.number().describe('Bytes freed'),
+});
+
 export const Event = z.object({
   id: z.number(),
   task_id: z.number(),

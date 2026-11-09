@@ -494,9 +494,13 @@ export function restRouter(): Router {
       'Content-Security-Policy': page
         ? "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; sandbox allow-scripts"
         : "default-src 'none'; sandbox",
-      'Cache-Control': 'private, max-age=31536000, immutable',
+      // An attachment can be deleted, so a stored copy is checked with the server before each use.
+      'Cache-Control': 'private, no-cache',
     });
     res.sendFile(path, { headers: { 'Content-Type': type }, dotfiles: 'allow' });
+  });
+  r.delete('/attachments/:id', async (req, res) => {
+    res.json(await svc.deleteAttachment(req.actor, id(req)));
   });
 
   r.get('/passkeys', async (req, res) => {

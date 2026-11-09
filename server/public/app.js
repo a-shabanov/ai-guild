@@ -228,12 +228,17 @@ function runChips(model, effort) {
 // Images are only ever loaded from this tracker: an attachment of the task, by file name,
 // by "attachment:12" or by its URL. Anything else stays text, so a description cannot make
 // the reader's browser call a third-party server.
-function resolveImage(ref, files) {
+function referredFile(ref, files) {
   const byId = /^(?:attachment:|\/api\/attachments\/)(\d+)(?:\/content)?$/.exec(ref);
   const name = decodeURIComponent(ref).split('/').pop();
   const file = byId
     ? files.find((f) => f.id === Number(byId[1]))
     : files.findLast((f) => f.filename === name);
+  return { byId, file };
+}
+
+function resolveImage(ref, files) {
+  const { byId, file } = referredFile(ref, files);
   if (file) return file.kind === 'image' && file.mime !== 'image/svg+xml' ? file : null;
   return byId ? { id: Number(byId[1]), url: `/api/attachments/${byId[1]}/content`, filename: ref } : null;
 }
@@ -254,10 +259,15 @@ function inline(text, files = []) {
     const g = m.groups;
     if (g.src != null) {
       const image = resolveImage(g.src, files);
+      const deleted = referredFile(g.src, files).file?.deleted;
+      // A picture of another task, or one whose file is gone: only loading it can tell.
+      const unavailable = () => h('span', { class: 'muted', title: i18n.t('Файл больше недоступен') }, i18n.t`[изображение недоступно: ${g.alt || g.src}]`);
       out.push(
         image
-          ? h('a', { class: 'md-img', href: image.url, target: '_blank', onclick: image.id && ((e) => (e.preventDefault(), openViewer(files.some((f) => f.id === image.id) ? files : [image], image))) }, h('img', { src: image.url, alt: g.alt || image.filename, loading: 'lazy' }))
-          : h('span', { class: 'muted', title: i18n.t('Приложите файл к задаче, чтобы картинка появилась') }, i18n.t`[изображение: ${g.alt || g.src}]`),
+          ? h('a', { class: 'md-img', href: image.url, target: '_blank', onclick: image.id && ((e) => (e.preventDefault(), openViewer(files.some((f) => f.id === image.id) ? files : [image], image))) }, h('img', { src: image.url, alt: g.alt || image.filename, loading: 'lazy', onerror: (e) => e.currentTarget.closest('a').replaceWith(unavailable()) }))
+          : deleted
+            ? h('span', { class: 'muted', title: i18n.t('Файл удалён') }, i18n.t`[изображение удалено: ${g.alt || g.src}]`)
+            : h('span', { class: 'muted', title: i18n.t('Приложите файл к задаче, чтобы картинка появилась') }, i18n.t`[изображение: ${g.alt || g.src}]`),
       );
     } else if (g.code != null) out.push(h('code', null, g.code));
     else if (g.bold != null) out.push(h('strong', null, g.bold));
@@ -993,6 +1003,7 @@ const EVENT_TEXT = {
   task_edited: (d) => i18n.t`изменил(а): ${(d.fields ?? []).join(', ')}`,
   result_submitted: (d) => i18n.t`отправил(а) результат → ${STATUS[d.to] ?? d.to}`,
   attachment_added: (d) => i18n.t`приложил(а) файл ${d.filename}`,
+  attachment_deleted: (d) => i18n.t`удалил(а) файл ${d.filename}`,
   link_added: (d) => i18n.t`добавил(а) связь: ${(LINK[d.type] ?? d.type).toLowerCase()} #${d.task_id}`,
   agent_run: (d) =>
     ({ started: i18n.t('запущен по сообщению человека'), finished: i18n.t('закончил запуск'), failed: i18n.t`запуск не удался${d.detail ? `: ${d.detail.slice(-300)}` : ''}` })[d.state] ?? d.state,
@@ -1006,6 +1017,21 @@ const isPage = (a) => a.mime === 'text/html';
 const isText = (a) => a.kind === 'log' || a.mime === 'image/svg+xml';
 const canPreview = (a) => isPicture(a) || a.kind === 'video' || isText(a);
 const extension = (a) => (a.filename.includes('.') ? a.filename.split('.').pop() : 'file').slice(0, 5).toUpperCase();
+// A picture of another task, shown by its id, comes without an author and is deleted from that task.
+const canDeleteFile = (a) => a.account_id != null && (a.account_id === state.me?.id || state.me?.role === 'admin');
+
+// Resolves to true when the file is gone; the current screen is already up to date by then.
+async function deleteFile(a) {
+  if (!confirm(i18n.t`Удалить файл «${a.filename}»? Вернуть его будет нельзя.`)) return false;
+  try {
+    await api('DELETE', `/attachments/${a.id}`);
+  } catch (ex) {
+    toast(ex.message);
+    return false;
+  }
+  await state.poll?.().catch(() => {});
+  return true;
+}
 
 function pauseVideos(except) {
   for (const video of document.querySelectorAll('video')) if (video !== except) video.pause();
@@ -1068,6 +1094,7 @@ function openViewer(files, current) {
         isPage(a) &&
           h('button', { class: 'small', 'aria-pressed': String(asSource), onclick: () => ((asSource = !asSource), show(at)) }, asSource ? i18n.t('Страница') : i18n.t('Исходный код')),
         h('a', { class: 'button small', href: a.url, download: a.filename }, i18n.t('Скачать')),
+        canDeleteFile(a) && h('button', { class: 'small', onclick: async () => { if (await deleteFile(a)) dlg.close(); } }, i18n.t('Удалить')),
         h('button', { class: 'small', 'aria-label': i18n.t('Закрыть'), onclick: () => dlg.close() }, '✕'),
       ].filter(Boolean),
     );
@@ -1124,8 +1151,12 @@ function fileCard(a, all = [a]) {
     openViewer(all, a);
   };
   // The video element needs its own clicks for the controls, so only the caption opens the viewer.
-  if (a.kind === 'video') return h('div', { class: 'file' }, preview, h('a', { href: a.url, target: '_blank', style: 'color:inherit', onclick: open }, name));
-  return h('a', { class: 'file', href: a.url, target: '_blank', onclick: canPreview(a) ? open : null }, preview, name);
+  const card = a.kind === 'video'
+    ? h('div', { class: 'file' }, preview, h('a', { href: a.url, target: '_blank', style: 'color:inherit', onclick: open }, name))
+    : h('a', { class: 'file', href: a.url, target: '_blank', onclick: canPreview(a) ? open : null }, preview, name);
+  if (!canDeleteFile(a)) return card;
+  // Beside the card, not inside it: a link cannot hold a button.
+  return h('div', { class: 'file-wrap' }, card, h('button', { class: 'file-delete', title: i18n.t('Удалить'), 'aria-label': i18n.t`Удалить файл ${a.filename}`, onclick: () => deleteFile(a) }, '✕'));
 }
 
 async function taskView(id, context) {
@@ -1185,6 +1216,12 @@ async function taskView(id, context) {
       [t.description, t.result, ...t.comments.map((c) => c.body)].flatMap((text) => inlineImageIds(text, t.attachments)),
     );
     const files = t.attachments.filter((a) => !shownInline.has(a.id));
+    // What the texts can refer to. A deleted file stays known by its history, so its references say
+    // so at once: the browser may still hold the picture. A live file of the same name goes last and wins.
+    const readable = [
+      ...t.events.filter((e) => e.type === 'attachment_deleted').map((e) => ({ id: e.data.attachment_id, filename: e.data.filename, deleted: true })),
+      ...t.attachments,
+    ];
     const commentFiles = new Map();
     for (const a of files) {
       if (a.comment_id) commentFiles.set(a.comment_id, [...(commentFiles.get(a.comment_id) ?? []), a]);
@@ -1206,7 +1243,7 @@ async function taskView(id, context) {
           time(t.created_at),
           h('button', { class: 'ghost small', onclick: () => editTaskDialog(t, load) }, i18n.t('Изменить')),
         ),
-        h('div', { class: 'comment-body' }, t.description ? markdown(t.description, t.attachments) : h('span', { class: 'muted' }, i18n.t('Без описания')), originalWords(t.original_text)),
+        h('div', { class: 'comment-body' }, t.description ? markdown(t.description, readable) : h('span', { class: 'muted' }, i18n.t('Без описания')), originalWords(t.original_text)),
       ),
       t.result &&
         h(
@@ -1221,7 +1258,7 @@ async function taskView(id, context) {
             h('span', { class: 'spacer' }),
             t.result_at && time(t.result_at),
           ),
-          h('div', { class: 'comment-body' }, markdown(t.result, t.attachments)),
+          h('div', { class: 'comment-body' }, markdown(t.result, readable)),
         ),
       (t.children.length > 0 || t.level !== 'subtask') &&
         h(
@@ -1285,7 +1322,7 @@ async function taskView(id, context) {
               h(
                 'div',
                 { class: 'comment-body' },
-                markdown(c.body, t.attachments),
+                markdown(c.body, readable),
                 originalWords(c.original_text),
                 commentFiles.has(c.id) && h('div', { class: 'files', style: 'margin-top:10px' }, commentFiles.get(c.id).map((a) => fileCard(a, t.attachments))),
               ),

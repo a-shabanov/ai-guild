@@ -1,12 +1,13 @@
 // End-to-end tests against a real Postgres (database "aitracker_test", recreated per run).
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { createHash, generateKeyPairSync, randomBytes, sign, verify } from 'node:crypto';
+import http from 'node:http';
 import http2 from 'node:http2';
 import pg from 'pg';
 
@@ -254,6 +255,113 @@ test('attachments: multipart and raw upload, download with range, no inline html
 
   assert.equal((await fetch(url + video.url)).status, 401);
   assert.equal((await api('ivan', 'GET', `/api/tasks/${task.id}`)).body.attachments.length, 4);
+});
+
+async function uploadText(who: string, taskId: number, filename: string, content = 'some bytes'): Promise<any> {
+  const res = await fetch(`${url}/api/tasks/${taskId}/attachments?filename=${filename}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${keys[who]}` },
+    body: content,
+  });
+  assert.equal(res.status, 201);
+  return (await res.json())[0];
+}
+
+async function storedFile(attachmentId: number): Promise<string> {
+  const { rows } = await pool.query('select storage_key from attachments where id = $1', [attachmentId]);
+  return join(process.env.DATA_DIR!, 'attachments', rows[0].storage_key);
+}
+
+test('deleting an attachment removes its row and file and stays in the history', async () => {
+  const task = (await api('codex', 'POST', '/api/tasks', { title: 'delete a file', ...codex })).body;
+  const file = await uploadText('claude', task.id, 'gone.log', 'twelve bytes');
+  const kept = await uploadText('claude', task.id, 'kept.log');
+  const path = await storedFile(file.id);
+  const keptPath = await storedFile(kept.id);
+  assert.equal(existsSync(path), true);
+
+  const res = await api('claude', 'DELETE', `/api/attachments/${file.id}`);
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body, { ok: true, id: file.id, task_id: task.id, filename: 'gone.log', size: 12 });
+
+  assert.equal(existsSync(path), false, 'the file is gone from the disk');
+  assert.equal(existsSync(keptPath), true, 'the other file of the task stays');
+  assert.equal((await pool.query('select 1 from attachments where id = $1', [file.id])).rowCount, 0);
+  assert.equal((await api('claude', 'GET', file.url)).status, 404);
+  assert.equal((await api('claude', 'DELETE', `/api/attachments/${file.id}`)).status, 404);
+
+  const detail = (await api('ivan', 'GET', `/api/tasks/${task.id}`)).body;
+  assert.deepEqual(detail.attachments.map((a: any) => a.id), [kept.id]);
+  assert.equal(detail.attachment_count, 1);
+  const event = detail.events.find((e: any) => e.type === 'attachment_deleted');
+  assert.equal(event.actor_name, 'claude');
+  assert.equal(event.data.attachment_id, file.id);
+  assert.equal(event.data.filename, 'gone.log');
+  assert.equal(event.data.size, 12);
+  assert.ok(detail.events.some((e: any) => e.type === 'attachment_added' && e.data.filename === 'gone.log'));
+
+  // The author of the task hears about it.
+  const inbox = (await api('codex', 'GET', '/api/inbox')).body.events;
+  assert.ok(inbox.some((e: any) => e.task_id === task.id && e.type === 'attachment_deleted'));
+});
+
+test('only the author of an attachment or an admin can delete it', async () => {
+  const task = (await api('codex', 'POST', '/api/tasks', { title: 'whose file', ...codex })).body;
+  const file = await uploadText('claude', task.id, 'mine.log');
+  const path = await storedFile(file.id);
+
+  // Creating the task gives no rights over the files on it.
+  const denied = await api('codex', 'DELETE', `/api/attachments/${file.id}`);
+  assert.equal(denied.status, 403);
+  assert.match(denied.body.error, /author or an admin/);
+  assert.equal(existsSync(path), true, 'a refused request leaves the file');
+  assert.equal((await pool.query('select 1 from attachments where id = $1', [file.id])).rowCount, 1);
+  const events = (await api('ivan', 'GET', `/api/tasks/${task.id}`)).body.events;
+  assert.ok(!events.some((e: any) => e.type === 'attachment_deleted'), 'and writes no history');
+
+  assert.equal((await fetch(`${url}/api/attachments/${file.id}`, { method: 'DELETE' })).status, 401);
+
+  const admin = await api('ivan', 'DELETE', `/api/attachments/${file.id}`);
+  assert.equal(admin.status, 200);
+  assert.equal(existsSync(path), false);
+
+  assert.equal((await api('ivan', 'DELETE', '/api/attachments/not-a-number')).status, 400);
+  assert.equal((await api('ivan', 'DELETE', '/api/attachments/99999999')).status, 404);
+});
+
+test('an attachment whose file is already missing can still be deleted', async () => {
+  const task = (await api('codex', 'POST', '/api/tasks', { title: 'lost file', ...codex })).body;
+  const file = await uploadText('codex', task.id, 'lost.log');
+  rmSync(await storedFile(file.id));
+  assert.equal((await api('codex', 'GET', file.url)).status, 410);
+  assert.equal((await api('codex', 'DELETE', `/api/attachments/${file.id}`)).status, 200);
+  assert.equal((await api('codex', 'GET', file.url)).status, 404);
+});
+
+test('a stored copy of an attachment is checked with the server, so a deleted one is not reused', async () => {
+  const task = (await api('codex', 'POST', '/api/tasks', { title: 'cached file', ...codex })).body;
+  const file = await uploadText('codex', task.id, 'cached.log');
+  const headers = { Authorization: `Bearer ${keys.codex}` };
+  const first = await fetch(url + file.url, { headers });
+  assert.equal(first.headers.get('cache-control'), 'private, no-cache');
+  const etag = first.headers.get('etag')!;
+  await first.arrayBuffer();
+  // Asked the way a browser revalidates its copy; fetch would add "no-cache" and force a full answer.
+  const revalidate = () => new Promise<number>((resolve, reject) => {
+    http.get(url + file.url, { headers: { ...headers, 'If-None-Match': etag } }, (res) => {
+      res.resume();
+      resolve(res.statusCode!);
+    }).on('error', reject);
+  });
+  assert.equal(await revalidate(), 304);
+
+  await api('codex', 'DELETE', `/api/attachments/${file.id}`);
+  assert.equal(await revalidate(), 404);
+});
+
+test('the API contract describes attachment deletion', async () => {
+  const spec = await (await fetch(`${url}/api/openapi.json`)).json();
+  assert.ok(spec.paths['/api/attachments/{id}'].delete);
 });
 
 test('analytics groups by model and effort', async () => {
@@ -682,6 +790,16 @@ test('MCP: agent works through tools end to end', async () => {
     max_bytes: 7,
   });
   assert.match(tail.data, /THE END$/);
+
+  const deletion = tools.find((t: any) => t.name === 'delete_attachment')!;
+  assert.equal(deletion.annotations!.readOnlyHint, false);
+  const scratch = await call(c, 'attach_text', { task_id: task.id, filename: 'scratch.log', content: 'x' });
+  const refused = await call(await connect('codex'), 'delete_attachment', { attachment_id: scratch.data.id });
+  assert.equal(refused.isError, true);
+  assert.match(refused.data, /author or an admin/);
+  const removed = await call(c, 'delete_attachment', { attachment_id: scratch.data.id });
+  assert.equal(removed.data.filename, 'scratch.log');
+  assert.equal((await api('claude', 'GET', scratch.data.url)).status, 404);
 
   await api('ivan', 'POST', `/api/tasks/${task.id}/comments`, { body: 'looks wrong, redo' });
   const inbox = await call(c, 'get_inbox');

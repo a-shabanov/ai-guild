@@ -379,6 +379,14 @@ function buildServer(actor: Actor): McpServer {
   );
 
   tool(
+    'delete_attachment',
+    'Delete an attachment and its file for good; attachment ids are in get_task. Only its author ' +
+      'or an admin can. Texts that show the picture then say it was deleted.',
+    { attachment_id: z.number().int() },
+    async ({ attachment_id }) => ok(await svc.deleteAttachment(actor, attachment_id)),
+  );
+
+  tool(
     'get_inbox',
     'What others did on tasks you are involved in (or where you are @mentioned) since your last ' +
       'ack_inbox: comments from the human and other agents, assignments, status changes.',

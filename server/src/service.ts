@@ -865,6 +865,29 @@ export async function getAttachment(id: number): Promise<{ row: Row; path: strin
   return { row: attachmentRow(row), path };
 }
 
+export async function deleteAttachment(actor: Actor, id: number): Promise<Row> {
+  const owner = await q1('select account_id from attachments where id = $1', [id]);
+  if (!owner) throw new HttpError(404, `attachment ${id} not found`);
+  if (owner.account_id !== actor.id && actor.role !== 'admin') {
+    throw new HttpError(403, 'only the author or an admin can delete an attachment');
+  }
+  // When two requests race, only the one that removed the row goes on to write history.
+  const row = await q1('delete from attachments where id = $1 returning *', [id]);
+  if (!row) throw new HttpError(404, `attachment ${id} not found`);
+  // The row goes first: a failure can leave a file nobody refers to, never a link to no file.
+  await rm(join(attachmentsDir(), row.storage_key), { force: true }).catch((err) =>
+    console.error(`attachment ${id}: file ${row.storage_key} was not removed`, err),
+  );
+  await q('update tasks set updated_at = now() where id = $1', [row.task_id]);
+  await addEvent(row.task_id, actor, 'attachment_deleted', {
+    attachment_id: row.id,
+    filename: row.filename,
+    kind: row.kind,
+    size: row.size,
+  });
+  return { ok: true, id: row.id, task_id: row.task_id, filename: row.filename, size: row.size };
+}
+
 export async function readAttachmentBytes(
   path: string,
   size: number,

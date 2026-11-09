@@ -149,6 +149,24 @@ test('files stay in the directory of their scope, including multipart uploads', 
   assert.equal(existsSync(join(dataDir, 'attachments')), false, 'nothing lands in the shared directory');
 });
 
+test('deleting an attachment touches only the scope it was asked in', async () => {
+  const a = (await task('alpha', 'delete in scope')).body;
+  const b = (await task('beta', 'delete in scope')).body;
+  // Equal ids on purpose: each scope numbers its attachments on its own, so the one behind catches up.
+  let kept = (await upload('alpha', a.id, 'alpha keeps this')).body[0];
+  let dropped = (await upload('beta', b.id, 'beta drops this')).body[0];
+  while (kept.id < dropped.id) kept = (await upload('alpha', a.id, 'alpha keeps this')).body[0];
+  while (dropped.id < kept.id) dropped = (await upload('beta', b.id, 'beta drops this')).body[0];
+  const id = kept.id;
+  const alphaFiles = readdirSync(join(dataDir, 'alpha', 'attachments')).length;
+  const betaFiles = readdirSync(join(dataDir, 'beta', 'attachments')).length;
+  assert.equal((await call('beta', 'DELETE', `/api/attachments/${id}`)).status, 200);
+  assert.equal(readdirSync(join(dataDir, 'beta', 'attachments')).length, betaFiles - 1);
+  assert.equal(readdirSync(join(dataDir, 'alpha', 'attachments')).length, alphaFiles);
+  assert.equal((await call('alpha', 'GET', `/api/attachments/${id}/content`)).text, 'alpha keeps this');
+  assert.equal((await call('beta', 'GET', `/api/attachments/${id}/content`)).status, 404);
+});
+
 test('the upload limit follows the scope', async () => {
   const a = (await task('alpha', 'limits')).body;
   const b = (await task('beta', 'limits')).body;

@@ -66,6 +66,7 @@ const ops: Op[] = [
   { method: 'post', path: '/api/tasks/{id}/timer/stop', summary: 'Stop timer', body: S.StopTimer, response: S.TimeLog },
   { method: 'post', path: '/api/tasks/{id}/attachments', summary: 'Upload file: multipart/form-data (field "file"), or raw body with ?filename=', response: z.array(S.Attachment) },
   { method: 'get', path: '/api/attachments/{id}/content', summary: 'Download attachment (supports Range)' },
+  { method: 'delete', path: '/api/attachments/{id}', summary: 'Delete an attachment and its file: its author or an admin', response: S.DeletedAttachment },
   { method: 'get', path: '/api/inbox', summary: 'Unacknowledged events from others on tasks you are involved in', query: S.ReadInbox, response: z.object({ cursor: z.number(), events: z.array(S.Event) }) },
   { method: 'post', path: '/api/tasks/{id}/runs', summary: 'Report that an agent was started for the task, or has ended', body: S.ReportRun, response: z.object({ ok: z.boolean() }) },
   { method: 'post', path: '/api/inbox/read', summary: 'Mark the events of one task as read', body: S.ReadTask, response: z.object({ ok: z.boolean() }) },

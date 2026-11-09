@@ -100,7 +100,7 @@ http_headers = { Authorization = "Bearer <KEY>" }
 
 `whoami`, `list_accounts`, `list_projects`, `create_project`, `list_tasks`, `get_task`, `create_task`, `update_task`, `add_comment`,
 `submit_result`, `log_time`, `update_time_log`, `start_timer`, `stop_timer`, `update_project`, `attach_text`, `get_upload_command`,
-`read_attachment`, `get_inbox`, `ack_inbox`, `get_analytics`.
+`read_attachment`, `delete_attachment`, `get_inbox`, `ack_inbox`, `get_analytics`.
 
 Бинарные файлы (фото, видео) через MCP не передаются: `get_upload_command` возвращает готовую
 команду `curl` для загрузки по REST.

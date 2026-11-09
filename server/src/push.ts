@@ -134,6 +134,8 @@ function describe(e: Row): string {
       return d.assignee ? `Новая задача для ${d.assignee}` : 'Новая задача';
     case 'attachment_added':
       return `Файл: ${d.filename}`;
+    case 'attachment_deleted':
+      return `Файл удалён: ${d.filename}`;
     default:
       return 'Задача изменена';
   }
